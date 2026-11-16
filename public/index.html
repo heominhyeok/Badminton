@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>게스트 신청</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root{
+    --bg:#FFFFFF; --ink:#1E1E1E; --sub:#8E8E93; --faint:#B0B0B5; --line:#EDEDED; --field:#F5F5F7;
+    --yellow:#FFE300; --on-yellow:#1E1E1E;
+    --slate:#7C9799; --green:#3C8C76; --coral:#E8836C;
+    --green-soft:#E6F2EE; --coral-soft:#FCEDE9;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){ --bg:#121212; --ink:#F2F2F2; --line:#262626; --field:#1E1E1E; --green-soft:#16302A; --coral-soft:#3A221C; }
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--bg);color:var(--ink);font-family:"Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+       line-height:1.5;-webkit-font-smoothing:antialiased;letter-spacing:-.015em}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:10px}
+  .num{font-feature-settings:"tnum";letter-spacing:-.02em}
+  .hidden{display:none !important}
+
+  /* 한 화면 고정 */
+  .app{max-width:420px;margin:0 auto;height:100vh;height:100dvh;padding:0 20px;display:flex;flex-direction:column}
+  .app > section{flex:1;min-height:0;display:flex;flex-direction:column}
+
+  .nav{height:52px;flex:none;display:grid;grid-template-columns:64px 1fr 64px;align-items:center;margin:0 -8px 4px}
+  .nav h1{text-align:center;font-size:16px;font-weight:600}
+  .nav .icon{width:40px;height:40px;border:0;background:none;font-size:22px;display:grid;place-items:center}
+  .nav .txt{justify-self:end;border:0;background:none;font-size:13px;color:var(--sub);padding:8px}
+
+  /* 통장 카드 */
+  .acard{display:block;width:100%;text-align:left;border:0;border-radius:12px;padding:14px 18px 16px;margin-bottom:10px;color:#fff;position:relative;transition:transform .12s}
+  button.acard:active{transform:scale(.985)}
+  .acard .t{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}
+  .acard .tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.25)}
+  .acard .s{display:block;font-size:12px;opacity:.72;margin-top:1px}
+  .acard .amt{display:block;text-align:right;font-size:22px;font-weight:700;margin-top:clamp(2px,1.6vh,18px)}
+  .acard .go{position:absolute;right:16px;top:12px;font-size:14px;opacity:.75}
+  .acard.yellow{background:var(--yellow);color:var(--on-yellow)}
+  .acard.yellow .tag{background:rgba(0,0,0,.08)}
+  .acard.slate{background:var(--slate)} .acard.green{background:var(--green)}
+  .acard .row{display:flex;justify-content:space-between;align-items:flex-end;margin-top:clamp(2px,1.6vh,18px)}
+  .acard .row .amt{margin:0}
+  .count{font-size:12px;font-weight:600}
+  .count-btn{border:0;background:rgba(0,0,0,.08);color:inherit;border-radius:999px;padding:4px 10px;margin-left:-2px}
+  .count-btn:active{background:rgba(0,0,0,.14)}
+  .name-hint{font-size:12px;color:var(--coral);margin:-2px 0 8px 2px}
+  .name-hint b{font-weight:700}
+  .glist{list-style:none;max-height:min(50vh,360px);overflow-y:auto;scrollbar-width:none;margin-bottom:12px}
+  .glist::-webkit-scrollbar{display:none}
+  .glist li{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:11px 2px;border-bottom:1px solid var(--line);font-size:15px}
+  .glist li b{font-weight:700;letter-spacing:.05em}
+  .glist li span{font-size:13px;color:var(--sub)}
+  .glist .lv{min-width:42px;text-align:center;font-size:12px;font-weight:700;color:var(--ink);background:var(--field);border-radius:999px;padding:3px 8px}
+  .glist li{grid-template-columns:auto 1fr auto auto}
+  .glist li.ghead{display:block;border:0;padding:14px 2px 4px}
+  .glist li.ghead:first-child{padding-top:2px}
+  .glist .sx{display:inline-block;font-size:12px;font-weight:700;color:#fff;border-radius:999px;padding:2px 9px;text-align:center}
+  .glist .sx.m{background:#3182F6} .glist .sx.f{background:#F04452}
+  .glist .none{display:block;text-align:center;color:var(--sub);padding:24px 0;border:0}
+  .count b{font-size:15px}
+
+  /* 폼 */
+  .sec-label{font-size:13px;color:var(--sub);margin:clamp(10px,2.2vh,20px) 0 8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .field input,.field select{width:100%;padding:14px 15px;border:0;border-radius:12px;background:var(--field);font-size:16px}
+  .field input::placeholder{color:var(--faint)}
+  .field input:focus,.field select:focus{outline:2px solid var(--yellow);outline-offset:0}
+  .field select{height:100%;padding-right:36px;appearance:none;-webkit-appearance:none;color:var(--ink);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238E8E93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 14px center}
+  .field select:invalid{color:var(--faint)}
+  .chips{display:flex;gap:6px}
+  .chips input{position:absolute;opacity:0;pointer-events:none}
+  .chips label{flex:1;min-width:0;white-space:nowrap;text-align:center;padding:11px 0;border-radius:12px;background:var(--field);font-size:14px;font-weight:600;cursor:pointer}
+  .chips input:checked + label{background:var(--ink);color:var(--bg)}
+  .chips input:focus-visible + label{outline:2px solid var(--ink);outline-offset:2px}
+
+  /* 송금 */
+  .payname{text-align:center;padding:clamp(2px,1.2vh,14px) 0 0}
+  .payname small{display:block;font-size:13px;color:var(--sub)}
+  .payname strong{display:block;font-size:clamp(26px,4.5vh,34px);font-weight:700;letter-spacing:-.03em;margin:0 0 6px}
+  .pay-hint{font-size:12px;color:var(--sub);margin-top:2px}
+  .pill{border:1px solid var(--line);background:none;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600}
+  .divider{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--sub);margin:clamp(8px,2vh,20px) 0 clamp(8px,1.4vh,12px)}
+  .divider::before,.divider::after{content:"";flex:1;border-top:1px dashed var(--line)}
+  .pc-warn{font-size:12px;color:var(--coral);text-align:center;margin-bottom:8px}
+  .wait{margin-top:auto;margin-bottom:calc(14px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:var(--field);border-radius:12px;padding:13px 16px;font-size:13px}
+  .wait span{color:var(--sub)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--coral);flex:none;animation:blink 1.2s infinite}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* 완료 */
+  .done{text-align:center;padding:clamp(8px,4vh,40px) 0 clamp(8px,2vh,20px)}
+  .check{width:64px;height:64px;border-radius:50%;background:var(--yellow);display:grid;place-items:center;margin:0 auto 14px;animation:pop .4s cubic-bezier(.2,.9,.3,1.3) both}
+  .check svg{width:30px;height:30px}
+  @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+  .done h2{font-size:24px;font-weight:700;letter-spacing:-.03em}
+  .done p{font-size:14px;color:var(--sub)}
+  .total{display:flex;justify-content:space-between;align-items:flex-end;margin-top:clamp(4px,1.6vh,16px)}
+  .big{font-size:30px;font-weight:700;line-height:1.1}
+  .big small{font-size:15px;font-weight:600;margin-left:2px}
+  .split{display:flex;gap:6px;flex-wrap:wrap}
+  .split span{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.25)}
+  .acard.yellow .split span{background:rgba(0,0,0,.08)}
+  .kv{list-style:none;border-top:1px solid var(--line);margin-top:6px}
+  .kv li{display:flex;justify-content:space-between;padding:11px 2px;border-bottom:1px solid var(--line);font-size:14px}
+  .kv li span{color:var(--sub)}
+  .kv li b{font-weight:600}
+
+  .cta-wrap{margin-top:auto;padding:10px 0 calc(14px + env(safe-area-inset-bottom))}
+  .cta{display:block;width:100%;padding:16px;border:0;border-radius:12px;background:var(--yellow);color:var(--on-yellow);font-size:16px;font-weight:700}
+  .cta:active{filter:brightness(.96)}
+  .cta:disabled{opacity:.5}
+  .cta.dark{background:var(--ink);color:var(--bg)}
+
+  /* ── 관리자 ───────────────────────── */
+  .login-head{padding:clamp(16px,6vh,56px) 0 clamp(14px,3vh,28px)}
+  .login-head .badge{width:52px;height:52px;border-radius:16px;background:var(--yellow);display:grid;place-items:center;margin-bottom:16px}
+  .login-head h2{font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1.3}
+  .login-head p{font-size:14px;color:var(--sub);margin-top:4px}
+  .stack{display:grid;gap:8px}
+
+  .seg{display:flex;background:var(--field);border-radius:12px;padding:3px;flex:none}
+  .seg button{flex:1;border:0;background:none;padding:9px 0;border-radius:10px;font-size:14px;font-weight:600;color:var(--sub)}
+  .seg button[aria-selected="true"]{background:var(--bg);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .seg.sm button{padding:7px 0;font-size:13px}
+  .pane{flex:1;min-height:0;display:flex;flex-direction:column;padding-top:12px}
+
+  .datebar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex:none}
+  .datebar button{width:36px;height:36px;border:0;border-radius:10px;background:var(--field);font-size:18px}
+  .datebar label{position:relative;font-size:16px;font-weight:700;cursor:pointer;padding:4px 8px}
+  .datebar input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .datebar .today{font-size:11px;font-weight:700;color:var(--green);margin-left:4px}
+
+  .filters{display:flex;gap:6px;margin:2px 0 6px;flex:none}
+  .filters button{border:0;background:none;padding:6px 10px;border-radius:999px;font-size:13px;font-weight:600;color:var(--sub)}
+  .filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+  .list{list-style:none;flex:1;min-height:0;overflow:hidden}
+  .item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .ava{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;font-size:14px;font-weight:700;flex:none;background:var(--field)}
+  .ava.m{background:#E3ECEE;color:#4F6D70} .ava.f{background:#FBE7E1;color:#B5583F}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .ava.m{background:#22302F;color:#9EC0C2} :root:not([data-theme="light"]) .ava.f{background:#3A2620;color:#F0A58F} }
+  .item .who{flex:1;min-width:0}
+  .item .who b{font-size:15px;font-weight:700}
+  .item .who em{font-style:normal;font-size:12px;color:var(--sub);margin-left:6px}
+  .item .who span{display:block;font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .act{display:flex;gap:6px;align-items:center;flex:none}
+  .btn-sm{border:0;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700}
+  .btn-sm.y{background:var(--yellow);color:var(--on-yellow)}
+  .btn-sm.ok{background:var(--green-soft);color:var(--green)}
+  .btn-x{width:30px;height:30px;border:0;border-radius:9px;background:none;color:var(--faint);font-size:15px}
+  .btn-x.arm{background:var(--coral-soft);color:var(--coral);width:auto;padding:0 9px;font-size:12px;font-weight:700}
+  .dep .time{width:46px;flex:none;text-align:center;line-height:1.25}
+  .dep .time b{display:block;font-size:15px;font-weight:700}
+  .dep .time span{font-size:11px;color:var(--sub)}
+  .dep .amt{font-size:15px;font-weight:700;flex:none}
+  .item .who .tag-ok,.item .who .tag-no{display:inline-block;width:auto;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin:3px 0 0;white-space:nowrap}
+  .item .who .tag-ok{color:var(--green);background:var(--green-soft)}
+  .item .who .tag-no{color:var(--coral);background:var(--coral-soft)}
+  .dep .who b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .empty{flex:1;display:grid;place-items:center;text-align:center;color:var(--sub);font-size:14px}
+  .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:2px}
+
+  .pager{display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 0 calc(10px + env(safe-area-inset-bottom));flex:none}
+  .pager button{width:34px;height:34px;border:0;border-radius:10px;background:var(--field);font-size:16px}
+  .pager button:disabled{opacity:.35;cursor:default}
+  .pager span{font-size:13px;color:var(--sub);min-width:48px;text-align:center}
+
+  .bars{list-style:none;flex:1;min-height:0;overflow:hidden}
+  .bar{display:grid;grid-template-columns:62px 1fr auto;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .bar .k{color:var(--sub)}
+  .bar .track{height:8px;border-radius:999px;background:var(--field);overflow:hidden}
+  .bar .fill{height:100%;border-radius:999px;background:var(--yellow);min-width:4px}
+  .bar .v{text-align:right;white-space:nowrap}
+  .bar .v b{font-weight:700}
+  .bar .v span{color:var(--sub);margin-left:6px}
+
+  .form{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding-top:12px}
+  .form select,.form input{flex:none;height:auto}
+  .form .lbl{font-size:12px;color:var(--sub);margin:4px 0 -2px 2px}
+  .form .hint{font-size:12px;color:var(--sub);margin:2px 2px 0}
+
+  .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;z-index:8;animation:fade .2s both}
+  .sheet{width:100%;max-width:420px;background:var(--bg);border-radius:20px 20px 0 0;padding:22px 20px calc(14px + env(safe-area-inset-bottom));animation:up .25s cubic-bezier(.2,.9,.3,1) both}
+  .sheet-copied{display:inline-block;font-size:12px;font-weight:700;color:var(--green);background:var(--green-soft);padding:4px 10px;border-radius:999px;margin-bottom:10px}
+  .sheet h3{font-size:19px;font-weight:700;letter-spacing:-.03em;margin-bottom:12px}
+  .steps{list-style:none;counter-reset:s;display:grid;gap:9px;margin-bottom:14px}
+  .steps li{counter-increment:s;display:flex;align-items:center;gap:10px;font-size:15px}
+  .steps li::before{content:counter(s);width:24px;height:24px;border-radius:50%;background:var(--yellow);color:var(--on-yellow);font-size:12px;font-weight:700;display:grid;place-items:center;flex:none}
+  .sheet-acct{background:var(--field);border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;margin-bottom:12px}
+  .sheet-close{display:block;width:100%;border:0;background:none;color:var(--sub);font-size:14px;padding:12px 0 2px}
+  @keyframes fade{from{opacity:0}} @keyframes up{from{transform:translateY(40px);opacity:0}}
+  .toast{position:fixed;left:50%;bottom:92px;transform:translate(-50%,10px);opacity:0;background:rgba(30,30,30,.92);color:#fff;
+         padding:11px 16px;border-radius:12px;font-size:13px;transition:.22s;pointer-events:none;width:max-content;max-width:calc(100% - 40px);text-align:center;z-index:9}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  @media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important} }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ① 신청 -->
+  <section id="stepApply">
+    <nav class="nav"><span></span><h1>게스트 신청</h1><button class="txt" type="button" id="toAdmin">관리자</button></nav>
+
+    <div class="acard yellow">
+      <span class="t"><span id="meetTitle"></span><span class="tag" id="seatText"></span></span>
+      <span class="s"><span id="meetTime"></span><span id="meetPlaceWrap"> · <span id="meetPlace"></span></span></span>
+      <span class="row">
+        <button class="count count-btn" type="button" id="guestListBtn">오늘 게스트 <b class="num" id="countApply">0</b>명 ›</button>
+        <span class="amt num fee"></span>
+      </span>
+    </div>
+
+    <form id="applyForm" novalidate>
+      <p class="sec-label">신청 정보</p>
+      <p class="name-hint">이름은 <b>입금할 때 보내는 분 이름과 똑같이</b> 적어주세요</p>
+      <div class="field">
+        <input id="name" maxlength="10" placeholder="이름" autocomplete="name" aria-label="이름">
+      </div>
+      <p class="sec-label">나이 · 성별</p>
+      <div class="grid2">
+        <div class="field">
+          <select id="age" aria-label="나이" required>
+            <option value="" selected disabled>나이대 선택</option>
+            <option>10대</option><option>20대</option><option>30대</option>
+            <option>40대</option><option>50대</option><option>60대</option>
+          </select>
+        </div>
+        <div class="chips" role="radiogroup" aria-label="성별">
+          <input type="radio" name="gender" id="gM" value="남"><label for="gM">남</label>
+          <input type="radio" name="gender" id="gF" value="여"><label for="gF">여</label>
+        </div>
+      </div>
+      <p class="sec-label">급수</p>
+      <div class="chips" role="radiogroup" aria-label="급수">
+        <input type="radio" name="level" id="lvA" value="A"><label for="lvA">A</label>
+        <input type="radio" name="level" id="lvB" value="B"><label for="lvB">B</label>
+        <input type="radio" name="level" id="lvC" value="C"><label for="lvC">C</label>
+        <input type="radio" name="level" id="lvD" value="D"><label for="lvD">D</label>
+        <input type="radio" name="level" id="lvN" value="초심"><label for="lvN">초심</label>
+      </div>
+    </form>
+    <div class="cta-wrap"><button class="cta" id="applyBtn" type="button">신청하고 계좌 받기</button></div>
+  </section>
+
+  <!-- ② 송금 -->
+  <section id="stepPay" class="hidden">
+    <nav class="nav"><button class="icon" type="button" id="cancelBtn" aria-label="신청 취소">‹</button><h1>게스트비 보내기</h1><span></span></nav>
+    <div class="payname">
+      <small id="payNameLabel">이 이름으로 보내주세요</small>
+      <strong id="payName"></strong>
+      <button class="pill hidden" type="button" id="copyNameBtn">입금자명 복사</button>
+      <p class="pay-hint" id="payHint">보내는 분 이름이 신청한 이름과 같아야 바로 확인돼요</p>
+    </div>
+    <p class="divider">보낼 방법을 골라주세요</p>
+    <p class="pc-warn hidden" id="pcWarn">PC에서는 송금 앱이 열리지 않아요. 휴대폰으로 열어주세요.</p>
+    <button class="acard yellow" type="button" data-method="kakao">
+      <span class="t">카카오페이</span><span class="s">계좌·금액이 채워진 채로 열려요</span>
+      <span class="go">›</span><span class="amt num fee"></span>
+    </button>
+    <button class="acard slate" type="button" data-method="toss">
+      <span class="t">토스</span><span class="s">계좌·금액이 채워진 채로 열려요</span>
+      <span class="go">›</span><span class="amt num fee"></span>
+    </button>
+    <button class="acard green" type="button" data-method="copy">
+      <span class="t">계좌번호 복사</span><span class="s num" id="acctText"></span>
+      <span class="go">›</span><span class="amt num fee"></span>
+    </button>
+    <div class="wait" role="status">
+      <i class="dot"></i>
+      <div><b>입금 확인 중</b><br><span>총무가 입금을 확인하면 자동으로 신청 완료돼요</span></div>
+    </div>
+  </section>
+
+  <!-- ③ 완료 -->
+  <section id="stepDone" class="hidden">
+    <div class="done">
+      <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <h2>게스트 신청 완료</h2>
+      <p id="doneSub">입금이 확인됐어요. 코트에서 만나요!</p>
+    </div>
+    <div class="acard green">
+      <span class="t" id="doneTitle"></span>
+      <span class="s">오늘 게스트 (입금 완료 기준)</span>
+      <span class="total">
+        <span class="split"><span id="cntM"></span><span id="cntF"></span></span>
+        <span class="big num"><span id="countDone"></span><small>명</small></span>
+      </span>
+    </div>
+    <ul class="kv">
+      <li><span>이름</span><b id="meName"></b></li>
+      <li><span>나이 · 성별</span><b id="meAgeGender"></b></li>
+      <li><span>급수</span><b id="meLevel"></b></li>
+      <li><span>게스트비</span><b class="num fee"></b></li>
+    </ul>
+    <div class="cta-wrap"><button class="cta dark" id="okBtn" type="button">다른 사람 신청하기</button></div>
+  </section>
+
+  <!-- ④ 관리자 로그인 -->
+  <section id="adminLogin" class="hidden">
+    <nav class="nav"><button class="icon" type="button" data-go="stepApply" aria-label="뒤로">‹</button><h1></h1><span></span></nav>
+    <div class="login-head">
+      <div class="badge" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+      <h2>관리자 로그인</h2>
+      <p>명단 확인, 입금 처리, 계좌 설정은 관리자만 할 수 있어요</p>
+    </div>
+    <form id="loginForm" class="stack field" novalidate>
+      <input id="adminId" placeholder="아이디" autocomplete="username" aria-label="아이디">
+      <input id="adminPw" type="password" placeholder="비밀번호" autocomplete="current-password" aria-label="비밀번호">
+      <button type="submit" class="hidden"></button>
+    </form>
+    <div class="cta-wrap"><button class="cta dark" id="loginBtn" type="button">로그인</button></div>
+  </section>
+
+  <!-- ⑤ 관리자 -->
+  <section id="admin" class="hidden">
+    <nav class="nav"><button class="icon" type="button" data-go="stepApply" aria-label="게스트 화면으로">‹</button><h1>관리자</h1><button class="txt" type="button" id="logoutBtn">로그아웃</button></nav>
+    <div class="seg" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="tabList">명단</button>
+      <button role="tab" aria-selected="false" data-tab="tabStats">통계</button>
+      <button role="tab" aria-selected="false" data-tab="tabDep">입금 알림</button>
+      <button role="tab" aria-selected="false" data-tab="tabSet">설정</button>
+    </div>
+
+    <!-- 명단 -->
+    <div class="pane" id="tabList">
+      <div class="datebar">
+        <button type="button" id="dPrev" aria-label="전날">‹</button>
+        <label><span id="dLabel"></span><span class="today hidden" id="dMeet">운동일</span><input type="date" id="dInput" aria-label="날짜 선택"></label>
+        <button type="button" id="dNext" aria-label="다음날">›</button>
+      </div>
+      <div class="acard yellow" style="margin-bottom:8px">
+        <span class="t">입금 완료 <span class="tag" id="lPending"></span></span>
+        <span class="total" style="margin-top:6px">
+          <span class="split"><span id="lM"></span><span id="lF"></span></span>
+          <span class="big num"><span id="lCount">0</span><small>명</small></span>
+        </span>
+        <span class="s" style="text-align:right;margin-top:2px">게스트비 합계 <b class="num" id="lSum">0원</b></span>
+      </div>
+      <div class="filters" role="group" aria-label="상태 필터">
+        <button type="button" aria-pressed="true" data-f="">전체</button>
+        <button type="button" aria-pressed="false" data-f="입금대기">입금대기</button>
+        <button type="button" aria-pressed="false" data-f="신청완료">입금완료</button>
+      </div>
+      <ul class="list" id="gList"></ul>
+      <div class="pager"><button type="button" id="gPrev" aria-label="이전 페이지">‹</button><span class="num" id="gPage">1 / 1</span><button type="button" id="gNext" aria-label="다음 페이지">›</button></div>
+    </div>
+
+    <!-- 통계 -->
+    <div class="pane hidden" id="tabStats">
+      <div class="seg sm" role="tablist" style="margin-bottom:10px">
+        <button role="tab" aria-selected="true" data-mode="day">일별</button>
+        <button role="tab" aria-selected="false" data-mode="month">월별</button>
+      </div>
+      <div class="datebar">
+        <button type="button" id="sPrev" aria-label="이전">‹</button>
+        <label><span id="sLabel"></span></label>
+        <button type="button" id="sNext" aria-label="다음">›</button>
+      </div>
+      <div class="acard green" style="margin-bottom:8px">
+        <span class="t" id="sTitle"></span>
+        <span class="total">
+          <span class="split"><span>게스트 <b class="num" id="sCount">0</b>명</span></span>
+          <span class="big num" id="sSum">0원</span>
+        </span>
+      </div>
+      <ul class="bars" id="sList"></ul>
+      <div class="pager"><button type="button" id="sPgPrev" aria-label="이전 페이지">‹</button><span class="num" id="sPage">1 / 1</span><button type="button" id="sPgNext" aria-label="다음 페이지">›</button></div>
+    </div>
+
+    <!-- 입금 알림 -->
+    <div class="pane hidden" id="tabDep">
+      <div class="acard slate" style="margin-bottom:8px">
+        <span class="t">폰에서 받은 입금 알림</span>
+        <span class="s">자동 확인은 이름과 금액이 둘 다 맞을 때만 돼요</span>
+        <span class="total">
+          <span class="split"><span>자동 확인 <b class="num" id="dMatched">0</b>건</span></span>
+          <span class="big num"><span id="dTotal">0</span><small>건</small></span>
+        </span>
+      </div>
+      <ul class="list" id="dList"></ul>
+      <div class="pager"><button type="button" id="dPgPrev" aria-label="이전 페이지">‹</button><span class="num" id="dPage">1 / 1</span><button type="button" id="dPgNext" aria-label="다음 페이지">›</button></div>
+    </div>
+
+    <!-- 설정 -->
+    <div class="pane hidden" id="tabSet">
+      <div class="seg sm" role="tablist">
+        <button role="tab" aria-selected="true" data-set="setMeet">모임</button>
+        <button role="tab" aria-selected="false" data-set="setBank">입금 계좌</button>
+        <button role="tab" aria-selected="false" data-set="setAcc">계정</button>
+      </div>
+      <form class="form field" id="setMeet" novalidate>
+        <p class="lbl">운동 날짜</p>
+        <div class="chips" role="radiogroup" aria-label="운동 날짜 방식">
+          <input type="radio" name="date_mode" id="dmAuto" value="auto" checked><label for="dmAuto">매일 자동 (오늘)</label>
+          <input type="radio" name="date_mode" id="dmFix" value="fixed"><label for="dmFix">날짜 지정</label>
+        </div>
+        <input type="date" name="meet_date" class="hidden" id="meetDateInput">
+        <p class="hint" id="dateHint">자정이 지나면 그날이 운동 날짜가 돼요</p>
+        <p class="lbl">모임 이름</p><input name="meet_title" placeholder="정기운동" maxlength="30">
+        <div class="grid2">
+          <div><p class="lbl">시간</p><input name="meet_time" placeholder="19:00–22:00"></div>
+          <div><p class="lbl">장소</p><input name="meet_place" placeholder="OO 체육관"></div>
+        </div>
+        <div class="grid2">
+          <div><p class="lbl">게스트비(원)</p><input name="fee" inputmode="numeric"></div>
+          <div><p class="lbl">게스트 정원</p><input name="max_guests" inputmode="numeric"></div>
+        </div>
+      </form>
+      <form class="form field hidden" id="setBank" novalidate>
+        <p class="lbl">은행</p>
+        <select name="bank_name" required>
+          <option value="" disabled selected>은행 선택</option>
+          <option>카카오뱅크</option><option>토스뱅크</option><option>케이뱅크</option>
+          <option>국민은행</option><option>신한은행</option><option>우리은행</option><option>하나은행</option>
+          <option>농협은행</option><option>기업은행</option><option>SC제일은행</option>
+          <option>새마을금고</option><option>신협</option><option>우체국</option><option>수협</option>
+          <option>부산은행</option><option>경남은행</option><option>iM뱅크</option><option>광주은행</option><option>전북은행</option>
+        </select>
+        <p class="lbl">계좌번호</p><input name="account_no" inputmode="numeric" placeholder="- 없이 숫자만">
+        <p class="lbl">예금주</p><input name="holder" maxlength="20">
+        <p class="hint">토스·카카오페이·계좌복사 모두 이 계좌로 입금돼요</p>
+      </form>
+      <form class="form field hidden" id="setAcc" novalidate>
+        <p class="lbl">새 비밀번호</p><input type="password" name="pw" autocomplete="new-password" placeholder="6자 이상">
+        <p class="lbl">새 비밀번호 확인</p><input type="password" name="pw2" autocomplete="new-password">
+      </form>
+      <div class="cta-wrap"><button class="cta" id="saveBtn" type="button">저장</button></div>
+    </div>
+  </section>
+</div>
+<!-- 오늘 게스트 목록 -->
+<div class="sheet-bg hidden" id="gSheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="gSheetTitle">
+    <h3 id="gSheetTitle">오늘 게스트</h3>
+    <p class="hint" id="gSheetSub" style="font-size:13px;color:var(--sub);margin:-8px 0 8px"></p>
+    <ul class="glist" id="gSheetList"></ul>
+    <button class="cta" type="button" id="gSheetClose">닫기</button>
+  </div>
+</div>
+
+<!-- 카카오페이 계좌송금 안내 -->
+<div class="sheet-bg hidden" id="kSheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="kSheetTitle">
+    <p class="sheet-copied" id="kSheetCopied"></p>
+    <h3 id="kSheetTitle">카카오페이에서 이렇게 보내주세요</h3>
+    <ol class="steps">
+      <li><b>송금</b>을 누르고</li>
+      <li><b>계좌</b> 탭을 고른 뒤</li>
+      <li>복사한 계좌번호를 <b>붙여넣기</b></li>
+      <li>금액 <b class="num fee"></b> 입력 후 보내기</li>
+    </ol>
+    <p class="sheet-acct num" id="kSheetAcct"></p>
+    <button class="cta" type="button" id="kSheetOpen">카카오페이 열기</button>
+    <button class="sheet-close" type="button" id="kSheetClose">닫기</button>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const won = n => Number(n || 0).toLocaleString("ko-KR") + "원";
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const prettyAcct = a => (a || "").replace(/(\d{4})(\d{2})(\d+)/, "$1-$2-$3");
+const DOW = "일월화수목금토";
+const fmtDate = s => { const d = new Date(s + "T00:00:00"); return `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일`; };
+const shortDate = s => { const d = new Date(s + "T00:00:00"); return `${d.getMonth()+1}.${d.getDate()} (${DOW[d.getDay()]})`; };
+const addDays = (s, n) => { const d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + n); return d.toLocaleDateString("sv-SE"); };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+async function api(path, body){
+  const r = await fetch(path, body === undefined ? {} : { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ error: "서버 응답을 읽지 못했어요" }));
+  if (!r.ok) { const e = new Error(j.error || "요청에 실패했어요"); e.status = r.status; throw e; }
+  return j;
+}
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    const ta = Object.assign(document.createElement("textarea"), { value: text });
+    ta.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {}
+    ta.remove(); return ok;
+  }
+}
+const SECTIONS = ["stepApply","stepPay","stepDone","adminLogin","admin"];
+function show(id){ SECTIONS.forEach(s => $(s).classList.toggle("hidden", s !== id)); }
+document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { stopAdmin(); show(b.dataset.go); loadPublic(); }));
+
+/* ───────── 게스트 ───────── */
+let S = {};          // 설정
+let me = null;       // { id, token, pay_name, name, age, gender, level }
+let pollTimer = null;
+const ME_KEY = "gp_me";
+
+function renderPublic(data){
+  S = data.settings;
+  const c = data.counts;
+  $("meetTitle").textContent = `${fmtDate(S.meet_date)} ${S.meet_title || ""}`.trim();
+  $("doneTitle").textContent = $("meetTitle").textContent;
+  $("meetTime").textContent = S.meet_time || "";
+  $("meetPlace").textContent = S.meet_place || "";
+  $("meetPlaceWrap").classList.toggle("hidden", !S.meet_place);
+  $("countApply").textContent = c.confirmed;
+  const left = Math.max(Number(S.max_guests) - c.confirmed - c.pending, 0);
+  $("seatText").textContent = left ? `${left}자리 남음` : "마감";
+  document.querySelectorAll(".fee").forEach(el => el.textContent = won(S.fee));
+  $("acctText").textContent = S.account_no ? `${S.bank_name} ${prettyAcct(S.account_no)} ${S.holder}` : "계좌 미설정";
+}
+async function loadPublic(){
+  try { renderPublic(await api("/api/public")); }
+  catch (e) { toast(e.message); }
+}
+function renderCounts(c){
+  $("countDone").textContent = c.confirmed;
+  $("cntM").textContent = "남 " + c.male;
+  $("cntF").textContent = "여 " + c.female;
+}
+
+const picked = n => document.querySelector(`input[name="${n}"]:checked`)?.value;
+async function apply(){
+  const body = { name: $("name").value.trim(), age: $("age").value, gender: picked("gender"), level: picked("level") };
+  if (!body.name) return toast("이름을 입력해주세요"), $("name").focus();
+  if (!body.age) return toast("나이대를 골라주세요");
+  if (!body.gender) return toast("성별을 골라주세요");
+  if (!body.level) return toast("급수를 골라주세요");
+  $("applyBtn").disabled = true;
+  try {
+    const r = await api("/api/apply", body);
+    me = { ...body, ...r };
+    try { localStorage.setItem(ME_KEY, JSON.stringify(me)); } catch {}
+    toPay();
+  } catch (e) { toast(e.message); }
+  finally { $("applyBtn").disabled = false; }
+}
+function toPay(){
+  const renamed = me.pay_name !== me.name;   // 같은 날 동명이인이 있어 숫자가 붙은 경우
+  $("payName").textContent = me.pay_name;
+  $("payNameLabel").textContent = renamed ? "같은 이름이 있어서 입금자명을 이렇게 바꿔주세요" : "이 이름으로 보내주세요";
+  $("payHint").textContent = renamed ? "송금할 때 '받는 분에게 표시' 이름을 바꾸면 돼요" : "보내는 분 이름이 신청한 이름과 같아야 바로 확인돼요";
+  $("copyNameBtn").classList.toggle("hidden", !renamed);
+  $("pcWarn").classList.toggle("hidden", isMobile);
+  show("stepPay");
+  clearInterval(pollTimer);
+  pollTimer = setInterval(checkStatus, 4000);
+}
+async function checkStatus(){
+  if (!me) return;
+  try {
+    const r = await api(`/api/status?id=${me.id}&token=${encodeURIComponent(me.token)}`);
+    if (r.status === "신청완료") finish(r.counts);
+  } catch (e) {
+    if (e.status === 404) { clearInterval(pollTimer); forgetMe(); toast("신청이 취소됐어요. 다시 신청해주세요"); show("stepApply"); loadPublic(); }
+  }
+}
+function finish(c){
+  clearInterval(pollTimer);
+  renderCounts(c);
+  $("meName").textContent = me.name;
+  $("meAgeGender").textContent = `${me.age} · ${me.gender}`;
+  $("meLevel").textContent = me.level;
+  show("stepDone");
+}
+function forgetMe(){ me = null; try { localStorage.removeItem(ME_KEY); } catch {} }
+
+function openApp(url, fallbackMsg, onFail){
+  const t = setTimeout(() => { if (!document.hidden) onFail ? onFail() : toast(fallbackMsg); }, 1800);
+  document.addEventListener("visibilitychange", () => clearTimeout(t), { once: true });
+  location.href = url;
+}
+async function pay(m){
+  if (!S.account_no) return toast("아직 입금 계좌가 설정되지 않았어요");
+  const acct = `${S.bank_name} ${S.account_no}`;
+  if (m === "copy") return toast(await copy(acct) ? "계좌번호를 복사했어요" : "복사하지 못했어요. 계좌번호를 길게 눌러 복사해주세요");
+  if (!isMobile) return toast("휴대폰에서 눌러주세요");
+  if (m === "toss") {
+    // 토스 송금 딥링크(비공식 형식 — 실기기 테스트 필요)
+    const q = new URLSearchParams({ amount: S.fee, bank: S.bank_name, accountNo: S.account_no, origin: "qr" });
+    return openApp("supertoss://send?" + q, "토스 앱이 없으면 계좌번호 복사를 이용해주세요");
+  }
+  // 카카오페이 계좌송금 앱링크 (카카오페이 공식 가이드 v1.0): 은행·계좌·금액이 채워진 송금 화면
+  const code = KAKAO_BANK[S.bank_name];
+  if (!code) return kakaoGuide(acct);
+  const q = new URLSearchParams({ bank_code: code, bank_account_number: S.account_no, amount: S.fee });
+  // 휴대폰 시험 결과(2026-11-16): kakaotalk:// 경유가 계좌·금액 채워진 송금 화면으로 열림. kakaopay:// 직접은 QR 스캔 화면이 떠서 안 씀
+  openApp("kakaotalk://kakaopay/money/to/bank?" + q, null, () => kakaoGuide(acct));
+}
+/* 카카오페이 금융기관코드 (공식 가이드 표 기준, 설정 화면의 은행 이름 → 코드) */
+const KAKAO_BANK = {
+  "카카오뱅크":"090","토스뱅크":"092","케이뱅크":"089","국민은행":"004","신한은행":"088","우리은행":"020","하나은행":"081",
+  "농협은행":"011","기업은행":"003","SC제일은행":"023","새마을금고":"045","신협":"048","우체국":"071","수협":"007",
+  "부산은행":"032","경남은행":"039","iM뱅크":"031","광주은행":"034","전북은행":"037"
+};
+/* 앱링크가 안 열릴 때: 계좌번호를 복사하고 계좌송금 순서를 안내 */
+async function kakaoGuide(acct){
+  const ok = await copy(acct);
+  $("kSheetAcct").textContent = `${S.bank_name} ${prettyAcct(S.account_no)} ${S.holder}`;
+  $("kSheetCopied").textContent = ok ? "계좌번호를 복사했어요" : "계좌번호를 길게 눌러 복사해주세요";
+  $("kSheet").classList.remove("hidden");
+}
+$("kSheetOpen").addEventListener("click", () => {
+  $("kSheet").classList.add("hidden");
+  openApp("kakaotalk://kakaopay/home", "카카오톡을 열어 더보기 › 페이 › 송금으로 가주세요");
+});
+$("kSheet").addEventListener("click", e => { if (e.target.id === "kSheet" || e.target.id === "kSheetClose") $("kSheet").classList.add("hidden"); });
+
+/* 오늘 게스트 목록 (이름은 성만, 나이대·급수) */
+$("guestListBtn").addEventListener("click", async () => {
+  try {
+    const r = await api("/api/public/guests");
+    $("gSheetSub").textContent = `${fmtDate(r.date)} · 입금 완료 ${r.guests.length}명`;
+    const sexCls = g => g === "남" ? "m" : "f";
+    const row = g => `<li><span class="sx ${sexCls(g.gender)}">${esc(g.gender)}</span><b>${esc(g.name)}</b><span>${esc(g.age)}</span><span class="lv">${esc(g.level)}${g.level === "초심" ? "" : "급"}</span></li>`;
+    const group = (sex, cls) => {
+      const list = r.guests.filter(g => g.gender === sex);
+      return list.length ? `<li class="ghead"><span class="sx ${cls}">${sex} ${list.length}명</span></li>` + list.map(row).join("") : "";
+    };
+    $("gSheetList").innerHTML = r.guests.length
+      ? group("남", "m") + group("여", "f")
+      : `<li class="none">아직 입금 완료된 게스트가 없어요</li>`;
+    $("gSheet").classList.remove("hidden");
+  } catch (e) { toast(e.message); }
+});
+$("gSheet").addEventListener("click", e => { if (e.target.id === "gSheet" || e.target.id === "gSheetClose") $("gSheet").classList.add("hidden"); });
+
+$("applyBtn").addEventListener("click", apply);
+$("applyForm").addEventListener("submit", e => { e.preventDefault(); apply(); });
+document.querySelectorAll("[data-method]").forEach(b => b.addEventListener("click", () => pay(b.dataset.method)));
+$("copyNameBtn").addEventListener("click", async () => toast(await copy(me.pay_name) ? "입금자명을 복사했어요" : "복사하지 못했어요"));
+$("cancelBtn").addEventListener("click", async () => {
+  // 실수로 눌러 신청이 사라지지 않게 3초 안에 한 번 더 눌러야 취소
+  const b = $("cancelBtn");
+  if (!b.dataset.arm) {
+    b.dataset.arm = "1"; toast("한 번 더 누르면 신청이 취소돼요");
+    setTimeout(() => delete b.dataset.arm, 3000); return;
+  }
+  delete b.dataset.arm;
+  clearInterval(pollTimer);
+  if (me) { try { await api("/api/cancel", { id: me.id, token: me.token }); } catch {} }
+  forgetMe(); show("stepApply"); loadPublic(); toast("신청을 취소했어요");
+});
+// 완료 화면은 그날 내내 유지. 친구 신청 등 다른 사람을 받을 때만 기록을 지우고 신청 화면으로
+$("okBtn").addEventListener("click", () => { $("applyForm").reset(); forgetMe(); show("stepApply"); loadPublic(); });
+
+/* ───────── 관리자 ───────── */
+let adminTimer = null;
+const L = { date: "", page: 1, filter: "" };
+const ST = { mode: "day", month: "", year: "", page: 1, rows: [] };
+const STATS_PER_PAGE = 7;
+
+function stopAdmin(){ clearInterval(adminTimer); }
+$("toAdmin").addEventListener("click", async () => {
+  try { await api("/api/admin/me"); openAdmin(); }
+  catch { show("adminLogin"); setTimeout(() => $("adminId").focus(), 50); }
+});
+async function login(){
+  try {
+    await api("/api/admin/login", { id: $("adminId").value.trim(), pw: $("adminPw").value });
+    $("adminPw").value = ""; openAdmin();
+  } catch (e) { toast(e.message); }
+}
+$("loginBtn").addEventListener("click", login);
+$("loginForm").addEventListener("submit", e => { e.preventDefault(); login(); });
+$("logoutBtn").addEventListener("click", async () => { try { await api("/api/admin/logout", {}); } catch {} stopAdmin(); show("stepApply"); toast("로그아웃했어요"); });
+
+function adminFail(e){
+  if (e.status === 401) { stopAdmin(); show("adminLogin"); toast("다시 로그인해주세요"); }
+  else toast(e.message);
+}
+function openAdmin(){
+  show("admin");
+  L.date = S.meet_date || new Date().toLocaleDateString("sv-SE");
+  L.page = 1;
+  const now = new Date().toLocaleDateString("sv-SE");
+  ST.month = now.slice(0, 7); ST.year = now.slice(0, 4);
+  selectTab("tabList");
+  stopAdmin();
+  adminTimer = setInterval(() => {
+    if (!$("tabList").classList.contains("hidden")) loadGuests();
+    if (!$("tabDep").classList.contains("hidden")) loadDeposits();
+  }, 8000);
+}
+function selectTab(id){
+  document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id));
+  ["tabList","tabStats","tabDep","tabSet"].forEach(t => $(t).classList.toggle("hidden", t !== id));
+  if (id === "tabList") loadGuests();
+  if (id === "tabStats") loadStats();
+  if (id === "tabDep") { DP.page = 1; loadDeposits(); }
+  if (id === "tabSet") loadSettings();
+}
+document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => selectTab(b.dataset.tab)));
+
+/* 명단 */
+function pageSize(){
+  // 화면 높이에 맞춰 한 페이지 줄 수 결정 (스크롤 없이)
+  const h = $("gList").clientHeight || 300;
+  return Math.max(3, Math.floor(h / 59));
+}
+async function loadGuests(){
+  try {
+    const q = new URLSearchParams({ date: L.date, page: L.page, size: pageSize(), status: L.filter });
+    const r = await api("/api/admin/guests?" + q);
+    L.page = r.page;
+    $("dLabel").textContent = shortDate(r.date);
+    $("dInput").value = r.date;
+    $("dMeet").classList.toggle("hidden", r.date !== S.meet_date);
+    $("lCount").textContent = r.counts.confirmed;
+    $("lM").textContent = "남 " + r.counts.male;
+    $("lF").textContent = "여 " + r.counts.female;
+    $("lPending").textContent = `대기 ${r.counts.pending}`;
+    $("lSum").textContent = won(r.paid_sum);
+    $("gPage").textContent = `${r.page} / ${r.pages}`;
+    $("gPrev").disabled = r.page <= 1; $("gNext").disabled = r.page >= r.pages;
+    const ul = $("gList");
+    if (!r.guests.length) {
+      ul.innerHTML = `<li class="empty"><div><b>${L.filter ? "해당하는 게스트가 없어요" : "아직 신청한 게스트가 없어요"}</b>신청이 들어오면 여기에 바로 보여요</div></li>`;
+      return;
+    }
+    ul.innerHTML = r.guests.map(g => `
+      <li class="item">
+        <span class="ava ${g.gender === "남" ? "m" : "f"}">${esc(g.name.slice(0,1))}</span>
+        <span class="who"><b>${esc(g.name)}</b>${g.pay_name !== g.name ? `<em>입금자명 ${esc(g.pay_name)}</em>` : ""}
+          <span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${g.created_at.slice(11,16)} 신청</span></span>
+        <span class="act">
+          ${g.status === "신청완료"
+            ? `<button class="btn-sm ok" data-undo="${g.id}" title="누르면 입금대기로 되돌려요">입금완료</button>`
+            : `<button class="btn-sm y" data-paid="${g.id}">입금확인</button>`}
+          <button class="btn-x" data-del="${g.id}" aria-label="${esc(g.name)} 삭제">✕</button>
+        </span>
+      </li>`).join("");
+  } catch (e) { adminFail(e); }
+}
+$("gList").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  try {
+    if (b.dataset.paid) { await api("/api/admin/mark", { id: +b.dataset.paid, paid: true }); toast("입금 확인했어요"); }
+    else if (b.dataset.undo) {
+      if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "되돌리기?"; setTimeout(() => loadGuests(), 2500); return; }
+      await api("/api/admin/mark", { id: +b.dataset.undo, paid: false }); toast("입금대기로 되돌렸어요");
+    }
+    else if (b.dataset.del) {
+      if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "삭제"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "✕"; }, 2500); return; }
+      await api("/api/admin/delete", { id: +b.dataset.del }); toast("삭제했어요");
+    }
+    loadGuests();
+  } catch (err) { adminFail(err); }
+});
+$("dPrev").addEventListener("click", () => { L.date = addDays(L.date, -1); L.page = 1; loadGuests(); });
+$("dNext").addEventListener("click", () => { L.date = addDays(L.date, 1); L.page = 1; loadGuests(); });
+$("dInput").addEventListener("change", e => { if (e.target.value) { L.date = e.target.value; L.page = 1; loadGuests(); } });
+$("gPrev").addEventListener("click", () => { L.page--; loadGuests(); });
+$("gNext").addEventListener("click", () => { L.page++; loadGuests(); });
+document.querySelectorAll("[data-f]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-f]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  L.filter = b.dataset.f; L.page = 1; loadGuests();
+}));
+
+/* 입금 알림 기록 */
+const DP = { page: 1 };
+async function loadDeposits(){
+  try {
+    const h = $("dList").clientHeight || 300;
+    const r = await api(`/api/admin/deposits?page=${DP.page}&size=${Math.max(3, Math.floor(h / 59))}`);
+    DP.page = r.page;
+    $("dTotal").textContent = r.total;
+    $("dMatched").textContent = r.matched;
+    $("dPage").textContent = `${r.page} / ${r.pages}`;
+    $("dPgPrev").disabled = r.page <= 1; $("dPgNext").disabled = r.page >= r.pages;
+    $("dList").innerHTML = r.deposits.length ? r.deposits.map(x => {
+      const day = x.received_at.slice(0, 10), hm = x.received_at.slice(11, 16);
+      const when = day === r.today ? "오늘" : shortDate(day);
+      const tag = x.guest_id
+        ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} 자동확인</span>`
+        : `<span class="tag-no">${x.amount == null ? "금액 확인 불가" : "맞는 신청 없음"}</span>`;
+      return `<li class="item dep">
+        <span class="time num"><b>${hm}</b><span>${when}</span></span>
+        <span class="who"><b>${esc(x.sender || "-")}</b>${tag}</span>
+        <span class="amt num">${x.amount == null ? "-" : won(x.amount)}</span>
+      </li>`;
+    }).join("") : `<li class="empty"><div><b>아직 받은 입금 알림이 없어요</b>폰에 입금 알림이 오면 여기에 바로 보여요</div></li>`;
+  } catch (e) { adminFail(e); }
+}
+$("dPgPrev").addEventListener("click", () => { DP.page--; loadDeposits(); });
+$("dPgNext").addEventListener("click", () => { DP.page++; loadDeposits(); });
+
+/* 통계 */
+async function loadStats(){
+  try {
+    const q = ST.mode === "day" ? `mode=day&month=${ST.month}` : `mode=month&year=${ST.year}`;
+    const r = await api("/api/admin/stats?" + q);
+    ST.rows = r.rows; ST.page = 1;
+    const [y, m] = ST.month.split("-");
+    $("sLabel").textContent = ST.mode === "day" ? `${y}년 ${+m}월` : `${ST.year}년`;
+    $("sTitle").textContent = ST.mode === "day" ? `${+m}월 게스트비` : `${ST.year}년 게스트비`;
+    $("sCount").textContent = r.total_count;
+    $("sSum").textContent = won(r.total_sum);
+    renderStats();
+  } catch (e) { adminFail(e); }
+}
+function renderStats(){
+  const rows = ST.rows, pages = Math.max(1, Math.ceil(rows.length / STATS_PER_PAGE));
+  ST.page = Math.min(ST.page, pages);
+  const part = rows.slice((ST.page - 1) * STATS_PER_PAGE, ST.page * STATS_PER_PAGE);
+  const max = Math.max(1, ...rows.map(r => r.sum));
+  $("sPage").textContent = `${ST.page} / ${pages}`;
+  $("sPgPrev").disabled = ST.page <= 1; $("sPgNext").disabled = ST.page >= pages;
+  $("sList").innerHTML = part.length ? part.map(r => `
+    <li class="bar">
+      <span class="k num">${ST.mode === "day" ? shortDate(r.key) : (+r.key.slice(5)) + "월"}</span>
+      <span class="track"><span class="fill" style="width:${Math.round(r.sum / max * 100)}%"></span></span>
+      <span class="v num"><b>${won(r.sum)}</b><span>${r.count}명</span></span>
+    </li>`).join("")
+    : `<li class="empty"><div><b>입금 완료된 게스트가 없어요</b>${ST.mode === "day" ? "다른 달을 골라보세요" : "다른 연도를 골라보세요"}</div></li>`;
+}
+document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-selected", x === b));
+  ST.mode = b.dataset.mode; loadStats();
+}));
+function shiftPeriod(n){
+  if (ST.mode === "day") { const d = new Date(ST.month + "-01T00:00:00"); d.setMonth(d.getMonth() + n); ST.month = d.toLocaleDateString("sv-SE").slice(0, 7); }
+  else ST.year = String(+ST.year + n);
+  loadStats();
+}
+$("sPrev").addEventListener("click", () => shiftPeriod(-1));
+$("sNext").addEventListener("click", () => shiftPeriod(1));
+$("sPgPrev").addEventListener("click", () => { ST.page--; renderStats(); });
+$("sPgNext").addEventListener("click", () => { ST.page++; renderStats(); });
+
+/* 설정 */
+let setForm = "setMeet";
+document.querySelectorAll("[data-set]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-set]").forEach(x => x.setAttribute("aria-selected", x === b));
+  setForm = b.dataset.set;
+  ["setMeet","setBank","setAcc"].forEach(f => $(f).classList.toggle("hidden", f !== setForm));
+  $("saveBtn").textContent = setForm === "setAcc" ? "비밀번호 바꾸기" : "저장";
+}));
+function renderDateMode(){
+  const fixed = $("dmFix").checked;
+  $("meetDateInput").classList.toggle("hidden", !fixed);
+  $("dateHint").textContent = fixed ? "그날이 지나면 다시 매일 자동으로 돌아가요" : "자정이 지나면 그날이 운동 날짜가 돼요";
+}
+document.querySelectorAll('input[name="date_mode"]').forEach(r => r.addEventListener("change", renderDateMode));
+async function loadSettings(){
+  try {
+    const s = await api("/api/admin/settings");
+    for (const f of ["setMeet","setBank"]) for (const el of $(f).elements) if (el.name in s && el.type !== "radio") el.value = s[el.name];
+    $("meetDateInput").min = s.today;
+    (s.meet_date ? $("dmFix") : $("dmAuto")).checked = true;
+    if (!s.meet_date) $("meetDateInput").value = s.today;
+    renderDateMode();
+  } catch (e) { adminFail(e); }
+}
+$("saveBtn").addEventListener("click", async () => {
+  try {
+    if (setForm === "setAcc") {
+      const f = $("setAcc").elements;
+      if (f.pw.value.length < 6) return toast("비밀번호는 6자 이상으로 해주세요");
+      if (f.pw.value !== f.pw2.value) return toast("새 비밀번호가 서로 달라요");
+      await api("/api/admin/password", { pw: f.pw.value });
+      f.pw.value = f.pw2.value = ""; return toast("비밀번호를 바꿨어요");
+    }
+    const body = {};
+    for (const el of $(setForm).elements) if (el.name && el.type !== "radio") body[el.name] = el.value;
+    if (setForm === "setMeet") {
+      if ($("dmAuto").checked) body.meet_date = "";
+      else if (!body.meet_date) return toast("지정할 날짜를 골라주세요");
+    }
+    await api("/api/admin/settings", body);
+    await loadPublic();
+    toast("저장했어요");
+  } catch (e) { adminFail(e); }
+});
+
+/* 시작: 진행 중이던 신청이 있으면 이어서 */
+(async function init(){
+  await loadPublic();
+  try { me = JSON.parse(localStorage.getItem(ME_KEY) || "null"); } catch {}
+  if (me) {
+    try {
+      const r = await api(`/api/status?id=${me.id}&token=${encodeURIComponent(me.token)}`);
+      if (r.meet_date !== S.meet_date) forgetMe();          // 지난 운동일 신청이면 새로 시작
+      else if (r.status === "신청완료") { finish(r.counts); $("doneSub").textContent = "오늘 이미 신청됐어요. 코트에서 만나요!"; }
+      else toPay();
+    } catch { forgetMe(); }
+  }
+})();
+</script>
+</body>
+</html>
