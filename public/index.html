@@ -753,6 +753,8 @@ async function login(){
   } catch (e) { $("loginErr").textContent = e.message; toast(e.message); }
   finally { $("loginBtn").disabled = false; }
 }
+$("loginBtn").addEventListener("click", login);
+$("loginForm").addEventListener("submit", e => { e.preventDefault(); login(); });
 // 처음 비밀번호(0000) 상태면 바꾸는 화면부터, 아니면 관리자 화면
 function afterLogin(info){
   ME = info;
