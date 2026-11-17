@@ -738,9 +738,19 @@ const STATS_PER_PAGE = 7;
 
 function stopAdmin(){ clearInterval(adminTimer); }
 let ME = null;   // 로그인한 관리자 { id, super, must_change, env }
+// 로그인 정보는 이 휴대폰 브라우저에만 저장해 두고 로그인 화면에 채워 넣음
+const SAVED_KEY = "gp_admin_saved";
+const savedLogin = () => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "null"); } catch { return null; } };
+const saveLogin = (id, pw) => { try { localStorage.setItem(SAVED_KEY, JSON.stringify({ id, pw })); } catch {} };
 $("toAdmin").addEventListener("click", async () => {
   try { afterLogin(await api("/api/admin/me")); }
-  catch { show("adminLogin"); setTimeout(() => $("adminId").focus(), 50); }
+  catch {
+    const s = savedLogin();
+    $("loginErr").textContent = "";
+    $("adminId").value = s?.id || ""; $("adminPw").value = s?.pw || "";
+    show("adminLogin");
+    if (!s?.pw) setTimeout(() => $(s?.id ? "adminPw" : "adminId").focus(), 50);
+  }
 });
 async function login(){
   $("loginErr").textContent = "";
@@ -749,8 +759,12 @@ async function login(){
   $("loginBtn").disabled = true;
   try {
     const info = await api("/api/admin/login", { id, pw });
+    saveLogin(id, pw);
     $("adminPw").value = ""; document.activeElement?.blur(); afterLogin(info);
-  } catch (e) { $("loginErr").textContent = e.message; toast(e.message); }
+  } catch (e) {
+    if (e.status === 401) saveLogin(id, "");   // 비밀번호가 바뀌었거나 초기화됨 → 저장된 비밀번호는 지움
+    $("loginErr").textContent = e.message; toast(e.message);
+  }
   finally { $("loginBtn").disabled = false; }
 }
 $("loginBtn").addEventListener("click", login);
@@ -769,7 +783,7 @@ async function changeFirstPw(){
   if (a.length < 6) return (err.textContent = "비밀번호는 6자 이상으로 해주세요");
   if (a !== b) return (err.textContent = "새 비밀번호가 서로 달라요");
   err.textContent = "";
-  try { await api("/api/admin/password", { pw: a }); document.activeElement?.blur(); toast("비밀번호를 바꿨어요"); afterLogin({ ...ME, must_change: false }); }
+  try { await api("/api/admin/password", { pw: a }); saveLogin(ME.id, a); document.activeElement?.blur(); toast("비밀번호를 바꿨어요"); afterLogin({ ...ME, must_change: false }); }
   catch (e) { err.textContent = e.message; adminFail(e); }
 }
 $("pwBtn").addEventListener("click", changeFirstPw);
@@ -1028,6 +1042,7 @@ $("saveBtn").addEventListener("click", async () => {
       if (f.pw.value.length < 6) return toast("비밀번호는 6자 이상으로 해주세요");
       if (f.pw.value !== f.pw2.value) return toast("새 비밀번호가 서로 달라요");
       await api("/api/admin/password", { pw: f.pw.value });
+      if (ME?.id) saveLogin(ME.id, f.pw.value);
       f.pw.value = f.pw2.value = ""; return toast("비밀번호를 바꿨어요");
     }
     const body = {};
