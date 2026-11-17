@@ -149,7 +149,9 @@ _ENV_ADMIN = {}
 
 def env_admin():
     """Railway 환경변수 ADMIN_ID / ADMIN_PW 가 있으면 그 계정만 사용 (비밀번호 변경도 Railway에서)"""
-    uid, pw = os.environ.get('ADMIN_ID'), os.environ.get('ADMIN_PW')
+    # 값 앞뒤 공백·따옴표는 무시 (Railway에 붙여넣을 때 섞여 들어가는 경우)
+    uid = (os.environ.get('ADMIN_ID') or '').strip().strip('"\'').strip()
+    pw = (os.environ.get('ADMIN_PW') or '').strip().strip('"\'').strip()
     if not (uid and pw):
         return None
     if _ENV_ADMIN.get('key') != (uid, pw):
@@ -480,14 +482,15 @@ def admin_login(h, q, d):
     uid, pw = clean(d.get('id')), str(d.get('pw') or '')
     conf = admin_conf()
     sess = None
-    if uid == conf['id']:
+    # 아이디는 대소문자 구분 없이 (휴대폰 키보드가 첫 글자를 대문자로 바꾸는 경우)
+    if uid.lower() == conf['id'].lower():
         if pw_ok(pw, conf):
-            sess = {'id': uid, 'super': True, 'must_change': False}
+            sess = {'id': conf['id'], 'super': True, 'must_change': False}
     else:
         with db() as con:
-            row = con.execute('SELECT * FROM admin_user WHERE id=?', (uid,)).fetchone()
+            row = con.execute('SELECT * FROM admin_user WHERE lower(id)=lower(?)', (uid,)).fetchone()
         if row and pw_ok(pw, row):
-            sess = {'id': uid, 'super': False, 'must_change': bool(row['must_change'])}
+            sess = {'id': row['id'], 'super': False, 'must_change': bool(row['must_change'])}
     if not sess: raise ApiError('아이디 또는 비밀번호가 맞지 않아요', 401)
     sid = secrets.token_urlsafe(24)
     SESSIONS[sid] = sess
@@ -521,11 +524,13 @@ def users_add(h, q, d):
     uid = clean(d.get('id'), 20)
     if not re.fullmatch(r'[0-9A-Za-z가-힣_.-]{2,20}', uid):
         raise ApiError('아이디는 2~20자 한글·영문·숫자로 해주세요')
-    if uid == admin_conf()['id']:
+    if uid.lower() == admin_conf()['id'].lower():
         raise ApiError('슈퍼 관리자 아이디와 같아요')
     salt = secrets.token_hex(16)
     try:
         with db() as con:
+            if con.execute('SELECT 1 FROM admin_user WHERE lower(id)=lower(?)', (uid,)).fetchone():
+                raise sqlite3.IntegrityError
             con.execute('INSERT INTO admin_user(id, salt, hash, must_change, created_at) VALUES (?,?,?,1,?)',
                         (uid, salt, hash_pw(USER_INIT_PW, salt), now()))
     except sqlite3.IntegrityError:

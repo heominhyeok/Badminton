@@ -146,6 +146,8 @@
   .login-head h2{font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1.3}
   .login-head p{font-size:14px;color:var(--sub);margin-top:4px}
   .stack{display:grid;gap:8px}
+  .form-err{font-size:13px;font-weight:600;color:var(--coral);min-height:0;margin:2px 2px 0}
+  .form-err:empty{display:none}
 
   .seg{display:flex;background:var(--field);border-radius:12px;padding:3px;flex:none}
   .seg button{flex:1;border:0;background:none;padding:9px 0;border-radius:10px;font-size:14px;font-weight:600;color:var(--sub)}
@@ -338,8 +340,9 @@
       <p>명단 확인, 입금 처리, 계좌 설정은 관리자만 할 수 있어요</p>
     </div>
     <form id="loginForm" class="stack field" novalidate>
-      <input id="adminId" placeholder="아이디" autocomplete="username" aria-label="아이디">
+      <input id="adminId" placeholder="아이디" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="아이디">
       <input id="adminPw" type="password" placeholder="비밀번호" autocomplete="current-password" aria-label="비밀번호">
+      <p class="form-err" id="loginErr" role="alert"></p>
       <button type="submit" class="hidden"></button>
     </form>
     <div class="cta-wrap"><button class="cta dark" id="loginBtn" type="button">로그인</button></div>
@@ -356,6 +359,7 @@
     <form id="pwForm" class="stack field" novalidate>
       <input id="newPw" type="password" placeholder="새 비밀번호 (6자 이상)" autocomplete="new-password" aria-label="새 비밀번호">
       <input id="newPw2" type="password" placeholder="새 비밀번호 확인" autocomplete="new-password" aria-label="새 비밀번호 확인">
+      <p class="form-err" id="pwErr" role="alert"></p>
       <button type="submit" class="hidden"></button>
     </form>
     <div class="cta-wrap"><button class="cta dark" id="pwBtn" type="button">바꾸고 시작하기</button></div>
@@ -478,7 +482,7 @@
       </form>
       <div class="form field hidden" id="setUsers">
         <p class="lbl">관리자 추가</p>
-        <div class="adduser"><input id="newUserId" maxlength="20" placeholder="아이디" autocomplete="off" aria-label="추가할 관리자 아이디"><button type="button" id="addUserBtn">추가</button></div>
+        <div class="adduser"><input id="newUserId" maxlength="20" placeholder="아이디" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="추가할 관리자 아이디"><button type="button" id="addUserBtn">추가</button></div>
         <p class="hint">처음 비밀번호는 0000이에요. 처음 로그인하면 바로 바꾸게 돼요</p>
         <ul class="list" id="uList"></ul>
         <div class="pager"><button type="button" id="uPrev" aria-label="이전 페이지">‹</button><span class="num" id="uPage">1 / 1</span><button type="button" id="uNext" aria-label="다음 페이지">›</button></div>
@@ -551,7 +555,11 @@ async function api(path, body){
   return j;
 }
 function toast(msg){
-  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  const t = $("toast"); t.textContent = msg;
+  // 키보드가 올라와 있으면 그 위에 보이도록 (보이는 화면 기준으로 위치 계산)
+  const vv = window.visualViewport;
+  t.style.bottom = vv ? Math.max(92, innerHeight - (vv.offsetTop + vv.height) + 24) + "px" : "";
+  t.classList.add("show");
   clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
 }
 async function copy(text){
@@ -735,10 +743,15 @@ $("toAdmin").addEventListener("click", async () => {
   catch { show("adminLogin"); setTimeout(() => $("adminId").focus(), 50); }
 });
 async function login(){
+  $("loginErr").textContent = "";
+  const id = $("adminId").value.trim(), pw = $("adminPw").value;
+  if (!id || !pw) return ($("loginErr").textContent = "아이디와 비밀번호를 입력해주세요");
+  $("loginBtn").disabled = true;
   try {
-    const info = await api("/api/admin/login", { id: $("adminId").value.trim(), pw: $("adminPw").value });
-    $("adminPw").value = ""; afterLogin(info);
-  } catch (e) { toast(e.message); }
+    const info = await api("/api/admin/login", { id, pw });
+    $("adminPw").value = ""; document.activeElement?.blur(); afterLogin(info);
+  } catch (e) { $("loginErr").textContent = e.message; toast(e.message); }
+  finally { $("loginBtn").disabled = false; }
 }
 // 처음 비밀번호(0000) 상태면 바꾸는 화면부터, 아니면 관리자 화면
 function afterLogin(info){
@@ -750,11 +763,12 @@ function afterLogin(info){
   } else openAdmin();
 }
 async function changeFirstPw(){
-  const a = $("newPw").value, b = $("newPw2").value;
-  if (a.length < 6) return toast("비밀번호는 6자 이상으로 해주세요");
-  if (a !== b) return toast("새 비밀번호가 서로 달라요");
-  try { await api("/api/admin/password", { pw: a }); toast("비밀번호를 바꿨어요"); afterLogin({ ...ME, must_change: false }); }
-  catch (e) { adminFail(e); }
+  const a = $("newPw").value, b = $("newPw2").value, err = $("pwErr");
+  if (a.length < 6) return (err.textContent = "비밀번호는 6자 이상으로 해주세요");
+  if (a !== b) return (err.textContent = "새 비밀번호가 서로 달라요");
+  err.textContent = "";
+  try { await api("/api/admin/password", { pw: a }); document.activeElement?.blur(); toast("비밀번호를 바꿨어요"); afterLogin({ ...ME, must_change: false }); }
+  catch (e) { err.textContent = e.message; adminFail(e); }
 }
 $("pwBtn").addEventListener("click", changeFirstPw);
 $("pwForm").addEventListener("submit", e => { e.preventDefault(); changeFirstPw(); });
