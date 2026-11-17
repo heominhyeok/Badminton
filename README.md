@@ -16,6 +16,15 @@ python -X utf8 server.py
   - `data/admin.json` 관리자 계정 (처음 계정 test / test1234 — 설정 탭에서 비밀번호 변경)
   - `data/hook_key.txt` 입금 알림 전달용 비밀키
 
+## Railway 배포
+
+- GitHub `main`에 올리면 자동 배포 (시작 명령은 `railway.json`)
+- 볼륨을 `/data`에 붙임 → `RAILWAY_VOLUME_MOUNT_PATH`로 DB·키 파일이 볼륨에 저장됨
+- 환경변수 (Variables 탭)
+  - `ACCESS_KEY` 외부 접속 키 (없으면 볼륨의 access_key.txt 자동 생성)
+  - `HOOK_KEY` 입금 알림 비밀키 (없으면 볼륨의 hook_key.txt 자동 생성)
+  - `DATA_DIR` 데이터 폴더 직접 지정 (선택), `HOST` 서버 주소 (Railway에선 자동 0.0.0.0)
+
 ## 구성
 
 - `server.py` — API 서버 (신청, 상태 확인, 관리자, 입금 알림 수신)
