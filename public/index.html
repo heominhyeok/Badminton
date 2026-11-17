@@ -113,6 +113,10 @@
   .pc-warn{font-size:12px;color:var(--coral);text-align:center;margin-bottom:8px}
   .wait{margin-top:auto;margin-bottom:calc(14px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:var(--field);border-radius:12px;padding:13px 16px;font-size:13px}
   .wait span{color:var(--sub)}
+  /* 송금 앱에서 돌아온 뒤 잠깐: 송금 버튼 잠금 (두 번 보내기 방지) */
+  #stepPay.sent [data-method="kakao"],#stepPay.sent [data-method="toss"]{opacity:.35;pointer-events:none}
+  .unsent{display:none;margin-top:6px;padding:0;border:0;background:none;font:inherit;font-size:12px;color:var(--sub);text-decoration:underline}
+  #stepPay.sent .unsent{display:inline-block}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--coral);flex:none;animation:blink 1.2s infinite}
   @keyframes blink{50%{opacity:.25}}
 
@@ -327,7 +331,8 @@
     </button>
     <div class="wait" role="status">
       <i class="dot"></i>
-      <div><b>입금 확인 중</b><br><span>총무가 입금을 확인하면 자동으로 신청 완료돼요</span></div>
+      <div><b id="waitTitle">입금 확인 중</b><br><span id="waitText">총무가 입금을 확인하면 자동으로 신청 완료돼요</span>
+        <button class="unsent" type="button" id="unsentBtn">아직 안 보냈어요</button></div>
     </div>
   </section>
 
@@ -622,6 +627,7 @@ function toPay(){
   $("payHint").textContent = renamed ? "송금할 때 '받는 분에게 표시' 이름을 바꾸면 돼요" : "보내는 분 이름이 신청한 이름과 같아야 바로 확인돼요";
   $("copyNameBtn").classList.toggle("hidden", !renamed);
   $("pcWarn").classList.toggle("hidden", isMobile);
+  lockPay(false);
   show("stepPay");
   clearInterval(pollTimer);
   pollTimer = setInterval(checkStatus, 4000);
@@ -643,6 +649,7 @@ function setDone(on){
 }
 function finish(){
   clearInterval(pollTimer);
+  lockPay(false);
   $("meName").textContent = me.name;
   $("meAgeGender").textContent = `${me.age} · ${me.gender}`;
   $("meLevel").textContent = me.level;
@@ -652,12 +659,28 @@ function finish(){
 }
 function forgetMe(){ me = null; setDone(false); try { localStorage.removeItem(ME_KEY); } catch {} }
 
-function openApp(url, fallbackMsg, onFail){
+function openApp(url, fallbackMsg, onFail, onReturn){
   const t = setTimeout(() => { if (!document.hidden) onFail ? onFail() : toast(fallbackMsg); }, 1800);
-  document.addEventListener("visibilitychange", () => clearTimeout(t), { once: true });
+  document.addEventListener("visibilitychange", () => {
+    clearTimeout(t);
+    // 송금 앱이 열렸다가(화면 가려짐) 다시 돌아오면 onReturn
+    if (document.hidden && onReturn)
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) onReturn(); }, { once: true });
+  }, { once: true });
   location.href = url;
 }
+// 송금 앱에서 돌아오면 1분 동안 송금 버튼을 잠그고 바로 입금 상태 확인 (자동 확인 전 두 번 보내기 방지)
+let sentTimer;
+function lockPay(on){
+  clearTimeout(sentTimer);
+  $("stepPay").classList.toggle("sent", on);
+  $("waitTitle").textContent = on ? "입금 확인 중이에요" : "입금 확인 중";
+  $("waitText").textContent = on ? "잠시만 기다려 주세요. 보통 몇 초면 확인돼요" : "총무가 입금을 확인하면 자동으로 신청 완료돼요";
+  if (on) sentTimer = setTimeout(() => lockPay(false), 60000);
+}
+function sentBack(){ lockPay(true); checkStatus(); }
 async function pay(m){
+  if ((m === "toss" || m === "kakao") && $("stepPay").classList.contains("sent")) return;
   if (!S.account_no) return toast("아직 입금 계좌가 설정되지 않았어요");
   const acct = `${S.bank_name} ${S.account_no}`;
   if (m === "copy") return toast(await copy(acct) ? "계좌번호를 복사했어요" : "복사하지 못했어요. 계좌번호를 길게 눌러 복사해주세요");
@@ -665,14 +688,14 @@ async function pay(m){
   if (m === "toss") {
     // 토스 송금 딥링크(비공식 형식 — 실기기 테스트 필요)
     const q = new URLSearchParams({ amount: S.fee, bank: S.bank_name, accountNo: S.account_no, origin: "qr" });
-    return openApp("supertoss://send?" + q, "토스 앱이 없으면 계좌번호 복사를 이용해주세요");
+    return openApp("supertoss://send?" + q, "토스 앱이 없으면 계좌번호 복사를 이용해주세요", null, sentBack);
   }
   // 카카오페이 계좌송금 앱링크 (카카오페이 공식 가이드 v1.0): 은행·계좌·금액이 채워진 송금 화면
   const code = KAKAO_BANK[S.bank_name];
   if (!code) return kakaoGuide(acct);
   const q = new URLSearchParams({ bank_code: code, bank_account_number: S.account_no, amount: S.fee });
   // 휴대폰 시험 결과(2026-11-16): kakaotalk:// 경유가 계좌·금액 채워진 송금 화면으로 열림. kakaopay:// 직접은 QR 스캔 화면이 떠서 안 씀
-  openApp("kakaotalk://kakaopay/money/to/bank?" + q, null, () => kakaoGuide(acct));
+  openApp("kakaotalk://kakaopay/money/to/bank?" + q, null, () => kakaoGuide(acct), sentBack);
 }
 /* 카카오페이 금융기관코드 (공식 가이드 표 기준, 설정 화면의 은행 이름 → 코드) */
 const KAKAO_BANK = {
@@ -715,6 +738,7 @@ $("gSheet").addEventListener("click", e => { if (e.target.id === "gSheet" || e.t
 $("applyBtn").addEventListener("click", apply);
 $("applyForm").addEventListener("submit", e => { e.preventDefault(); apply(); });
 document.querySelectorAll("[data-method]").forEach(b => b.addEventListener("click", () => pay(b.dataset.method)));
+$("unsentBtn").addEventListener("click", () => lockPay(false));
 $("copyNameBtn").addEventListener("click", async () => toast(await copy(me.pay_name) ? "입금자명을 복사했어요" : "복사하지 못했어요"));
 $("cancelBtn").addEventListener("click", async () => {
   // 실수로 눌러 신청이 사라지지 않게 3초 안에 한 번 더 눌러야 취소
