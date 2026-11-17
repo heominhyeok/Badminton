@@ -13,7 +13,7 @@ python -X utf8 server.py
 - 처음 실행하면 `data/` 폴더에 DB와 키 파일이 생김 (git에 올리지 않음)
   - `data/badminton.db` 신청·설정·입금 알림 기록
   - `data/access_key.txt` 외부 접속 키 (링크에 `?key=` 로 붙임)
-  - `data/admin.json` 관리자 계정 (처음 계정 test / test1234 — 설정 탭에서 비밀번호 변경)
+  - `data/admin.json` 슈퍼 관리자 계정 (환경변수 ADMIN_ID/ADMIN_PW 없을 때만, 기본 admin / admin1234)
   - `data/hook_key.txt` 입금 알림 전달용 비밀키
 
 ## Railway 배포
@@ -24,7 +24,15 @@ python -X utf8 server.py
   - `REQUIRE_KEY` `1`로 두면 접속 키를 받음 (기본은 게스트가 키 없이 바로 접속)
   - `ACCESS_KEY` 외부 접속 키 (REQUIRE_KEY일 때만 사용, 없으면 볼륨의 access_key.txt 자동 생성)
   - `HOOK_KEY` 입금 알림 비밀키 (없으면 볼륨의 hook_key.txt 자동 생성)
+  - `ADMIN_ID`, `ADMIN_PW` 슈퍼 관리자 계정 (없으면 기본 admin / admin1234)
   - `DATA_DIR` 데이터 폴더 직접 지정 (선택), `HOST` 서버 주소 (Railway에선 자동 0.0.0.0)
+
+## 관리자
+
+- 슈퍼 관리자: Railway 환경변수 `ADMIN_ID` / `ADMIN_PW` (비밀번호도 Railway에서 바꿈)
+- 설정 → 관리자: 슈퍼 관리자만. 관리자 추가(처음 비밀번호 0000), 비번 초기화(다시 0000), 삭제
+- 추가된 관리자는 0000으로 처음 로그인하면 비밀번호를 바꿔야 다른 화면으로 갈 수 있음
+- 휴대폰에서만 접속 (PC는 안내 화면만)
 
 ## 구성
 

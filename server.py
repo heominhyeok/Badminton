@@ -30,7 +30,7 @@ DEFAULT_SETTINGS = {
 }
 SETTING_KEYS = list(DEFAULT_SETTINGS)
 LOCK = threading.Lock()
-SESSIONS = set()
+SESSIONS = {}   # sid → {'id', 'super', 'must_change'}
 
 
 def today():
@@ -68,6 +68,12 @@ def init_db():
             received_at TEXT NOT NULL, raw TEXT NOT NULL,
             sender TEXT, amount INTEGER,
             guest_id INTEGER                     -- 자동으로 맞춘 신청 (없으면 NULL)
+        );
+        CREATE TABLE IF NOT EXISTS admin_user (  -- 슈퍼 관리자가 추가한 관리자
+            id TEXT PRIMARY KEY,
+            salt TEXT NOT NULL, hash TEXT NOT NULL,
+            must_change INTEGER NOT NULL DEFAULT 1,  -- 1이면 처음 비밀번호(0000) 상태 → 로그인 후 바로 바꿔야 함
+            created_at TEXT NOT NULL
         );
         ''')
         for k, v in DEFAULT_SETTINGS.items():
@@ -127,17 +133,44 @@ def hash_pw(pw, salt):
     return hashlib.pbkdf2_hmac('sha256', pw.encode(), bytes.fromhex(salt), 200_000).hex()
 
 
-def admin_conf():
-    if not os.path.exists(ADMIN_FILE):
-        # 테스트용 초기 계정 (설정 탭에서 비밀번호 변경 가능)
-        uid, pw = 'test', 'test1234'
+DEFAULT_ADMIN = ('admin', 'admin1234')   # 기본 관리자 계정 (설정 탭에서 비밀번호 변경 가능)
+
+
+def write_admin(uid, pw):
+    salt = secrets.token_hex(16)
+    conf = {'id': uid, 'salt': salt, 'hash': hash_pw(pw, salt)}
+    with open(ADMIN_FILE, 'w', encoding='utf-8') as f:
+        json.dump(conf, f)
+    return conf
+
+
+_ENV_ADMIN = {}
+
+
+def env_admin():
+    """Railway 환경변수 ADMIN_ID / ADMIN_PW 가 있으면 그 계정만 사용 (비밀번호 변경도 Railway에서)"""
+    uid, pw = os.environ.get('ADMIN_ID'), os.environ.get('ADMIN_PW')
+    if not (uid and pw):
+        return None
+    if _ENV_ADMIN.get('key') != (uid, pw):
         salt = secrets.token_hex(16)
-        conf = {'id': uid, 'salt': salt, 'hash': hash_pw(pw, salt)}
-        with open(ADMIN_FILE, 'w', encoding='utf-8') as f:
-            json.dump(conf, f)
-        print(f'[처음 실행] 관리자 계정 생성: {uid}  (data/admin.json 에 암호화 저장)', flush=True)
+        _ENV_ADMIN.update(key=(uid, pw), conf={'id': uid, 'salt': salt, 'hash': hash_pw(pw, salt), 'env': True})
+    return _ENV_ADMIN['conf']
+
+
+def admin_conf():
+    if env_admin():
+        return env_admin()
+    if not os.path.exists(ADMIN_FILE):
+        write_admin(*DEFAULT_ADMIN)
+        print(f'[처음 실행] 관리자 계정 생성: {DEFAULT_ADMIN[0]}  (data/admin.json 에 암호화 저장)', flush=True)
     with open(ADMIN_FILE, encoding='utf-8') as f:
-        return json.load(f)
+        conf = json.load(f)
+    # 예전 시험용 계정(test / test1234)을 그대로 쓰고 있으면 기본 계정으로 바꿈. 비밀번호를 바꿨으면 손대지 않음
+    if conf.get('id') == 'test' and secrets.compare_digest(hash_pw('test1234', conf['salt']), conf['hash']):
+        conf = write_admin(*DEFAULT_ADMIN)
+        print(f'관리자 계정을 기본 계정({DEFAULT_ADMIN[0]})으로 바꿨어요', flush=True)
+    return conf
 
 
 def set_admin_pw(new_pw):
@@ -218,8 +251,8 @@ class H(SimpleHTTPRequestHandler):
         self.wfile.write(body)
         return False
 
-    def is_admin(self):
-        return self.cookie('gp_admin') in SESSIONS
+    def session(self):
+        return SESSIONS.get(self.cookie('gp_admin') or '')
 
     # 응답
     def json(self, obj, code=200, headers=None):
@@ -267,8 +300,14 @@ class H(SimpleHTTPRequestHandler):
         p = u.path
         try:
             data = self.body() if method == 'POST' else {}
-            if p.startswith('/api/admin/') and p != '/api/admin/login' and not self.is_admin():
-                raise ApiError('관리자 로그인이 필요해요', 401)
+            if p.startswith('/api/admin/') and p != '/api/admin/login':
+                sess = self.session()
+                if not sess:
+                    raise ApiError('관리자 로그인이 필요해요', 401)
+                if sess['must_change'] and p not in ('/api/admin/me', '/api/admin/logout', '/api/admin/password'):
+                    raise ApiError('처음 비밀번호를 먼저 바꿔주세요', 403)
+                if p.startswith('/api/admin/users') and not sess['super']:
+                    raise ApiError('슈퍼 관리자만 할 수 있어요', 403)
             handler = ROUTES.get((method, p))
             if not handler:
                 raise ApiError('없는 주소예요', 404)
@@ -425,23 +464,93 @@ def admin_deposits(h, q, d):
 
 
 # ── 관리자 API ─────────────────────────────────────
+USER_INIT_PW = '0000'   # 추가·초기화한 관리자의 처음 비밀번호
+
+
+def pw_ok(pw, row):
+    return secrets.compare_digest(hash_pw(pw, row['salt']), row['hash'])
+
+
+def me_info(sess):
+    return {'ok': True, 'id': sess['id'], 'super': sess['super'], 'must_change': sess['must_change'],
+            'env': bool(sess['super'] and env_admin())}
+
+
 def admin_login(h, q, d):
+    uid, pw = clean(d.get('id')), str(d.get('pw') or '')
     conf = admin_conf()
-    ok = clean(d.get('id')) == conf['id'] and secrets.compare_digest(hash_pw(str(d.get('pw') or ''), conf['salt']), conf['hash'])
-    if not ok: raise ApiError('아이디 또는 비밀번호가 맞지 않아요', 401)
+    sess = None
+    if uid == conf['id']:
+        if pw_ok(pw, conf):
+            sess = {'id': uid, 'super': True, 'must_change': False}
+    else:
+        with db() as con:
+            row = con.execute('SELECT * FROM admin_user WHERE id=?', (uid,)).fetchone()
+        if row and pw_ok(pw, row):
+            sess = {'id': uid, 'super': False, 'must_change': bool(row['must_change'])}
+    if not sess: raise ApiError('아이디 또는 비밀번호가 맞지 않아요', 401)
     sid = secrets.token_urlsafe(24)
-    SESSIONS.add(sid)
+    SESSIONS[sid] = sess
     secure = '' if h.is_local() else ' Secure;'
-    h.json({'ok': True}, headers={'Set-Cookie': f'gp_admin={sid}; Path=/; HttpOnly;{secure} SameSite=Lax; Max-Age=43200'})
+    h.json(me_info(sess), headers={'Set-Cookie': f'gp_admin={sid}; Path=/; HttpOnly;{secure} SameSite=Lax; Max-Age=43200'})
 
 
 def admin_me(h, q, d):
-    h.json({'ok': True})
+    h.json(me_info(h.session()))
 
 
 def admin_logout(h, q, d):
-    SESSIONS.discard(h.cookie('gp_admin'))
+    SESSIONS.pop(h.cookie('gp_admin') or '', None)
     h.json({'ok': True}, headers={'Set-Cookie': 'gp_admin=; Path=/; Max-Age=0'})
+
+
+def drop_sessions(uid):
+    """그 관리자의 로그인을 모두 끊음 (비밀번호 초기화·삭제 때)"""
+    for sid in [s for s, v in SESSIONS.items() if v['id'] == uid and not v['super']]:
+        SESSIONS.pop(sid, None)
+
+
+# ── 관리자 관리 (슈퍼 관리자만) ─────────────────────
+def users_list(h, q, d):
+    with db() as con:
+        rows = [dict(r) for r in con.execute('SELECT id, must_change, created_at FROM admin_user ORDER BY created_at')]
+    h.json({'users': rows, 'super_id': admin_conf()['id']})
+
+
+def users_add(h, q, d):
+    uid = clean(d.get('id'), 20)
+    if not re.fullmatch(r'[0-9A-Za-z가-힣_.-]{2,20}', uid):
+        raise ApiError('아이디는 2~20자 한글·영문·숫자로 해주세요')
+    if uid == admin_conf()['id']:
+        raise ApiError('슈퍼 관리자 아이디와 같아요')
+    salt = secrets.token_hex(16)
+    try:
+        with db() as con:
+            con.execute('INSERT INTO admin_user(id, salt, hash, must_change, created_at) VALUES (?,?,?,1,?)',
+                        (uid, salt, hash_pw(USER_INIT_PW, salt), now()))
+    except sqlite3.IntegrityError:
+        raise ApiError('이미 있는 아이디예요')
+    h.json({'ok': True})
+
+
+def users_reset(h, q, d):
+    uid = clean(d.get('id'), 20)
+    salt = secrets.token_hex(16)
+    with db() as con:
+        n = con.execute('UPDATE admin_user SET salt=?, hash=?, must_change=1 WHERE id=?',
+                        (salt, hash_pw(USER_INIT_PW, salt), uid)).rowcount
+    if not n: raise ApiError('없는 아이디예요', 404)
+    drop_sessions(uid)
+    h.json({'ok': True})
+
+
+def users_delete(h, q, d):
+    uid = clean(d.get('id'), 20)
+    with db() as con:
+        n = con.execute('DELETE FROM admin_user WHERE id=?', (uid,)).rowcount
+    if not n: raise ApiError('없는 아이디예요', 404)
+    drop_sessions(uid)
+    h.json({'ok': True})
 
 
 def admin_guests(h, q, d):
@@ -518,8 +627,18 @@ def admin_settings_save(h, q, d):
 
 def admin_password(h, q, d):
     pw = str(d.get('pw') or '')
+    sess = h.session()
     if len(pw) < 6: raise ApiError('비밀번호는 6자 이상으로 해주세요')
-    set_admin_pw(pw)
+    if sess['super']:
+        if env_admin(): raise ApiError('슈퍼 관리자 비밀번호는 Railway 환경변수(ADMIN_PW)에서 바꿔주세요')
+        set_admin_pw(pw)
+    else:
+        salt = secrets.token_hex(16)
+        with db() as con:
+            con.execute('UPDATE admin_user SET salt=?, hash=?, must_change=0 WHERE id=?', (salt, hash_pw(pw, salt), sess['id']))
+        for v in SESSIONS.values():
+            if v['id'] == sess['id'] and not v['super']:
+                v['must_change'] = False
     h.json({'ok': True})
 
 
@@ -540,6 +659,10 @@ ROUTES = {
     ('POST', '/api/admin/settings'): admin_settings_save,
     ('POST', '/api/admin/password'): admin_password,
     ('GET', '/api/admin/deposits'): admin_deposits,
+    ('GET', '/api/admin/users'): users_list,
+    ('POST', '/api/admin/users/add'): users_add,
+    ('POST', '/api/admin/users/reset'): users_reset,
+    ('POST', '/api/admin/users/delete'): users_delete,
     ('POST', '/api/hook/deposit'): hook_deposit,
 }
 

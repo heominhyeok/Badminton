@@ -189,6 +189,10 @@
   .empty{flex:1;display:grid;place-items:center;text-align:center;color:var(--sub);font-size:14px}
   .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:2px}
 
+  .adduser{display:flex;gap:8px}
+  #setUsers .adduser input{flex:1;min-width:0}
+  .adduser button{flex:none;border:0;border-radius:12px;padding:0 20px;background:var(--ink);color:var(--bg);font-size:15px;font-weight:700}
+  #uList{margin-top:4px}
   .pager{display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 0 calc(10px + env(safe-area-inset-bottom));flex:none}
   .pager button{width:34px;height:34px;border:0;border-radius:10px;background:var(--field);font-size:16px}
   .pager button:disabled{opacity:.35;cursor:default}
@@ -225,7 +229,15 @@
 </style>
 </head>
 <body>
-<div class="app">
+<!-- PC 접속 안내 (휴대폰에서만 사용) -->
+<div class="app hidden" id="pcBlock" style="justify-content:center">
+  <div class="done">
+    <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></div>
+    <h2>휴대폰에서 열어주세요</h2>
+    <p>PC에서는 접속할 수 없어요.<br>휴대폰으로 이 주소를 열어주세요.</p>
+  </div>
+</div>
+<div class="app" id="mainApp">
 
   <!-- ① 신청 -->
   <section id="stepApply">
@@ -333,6 +345,22 @@
     <div class="cta-wrap"><button class="cta dark" id="loginBtn" type="button">로그인</button></div>
   </section>
 
+  <!-- ④-1 처음 로그인: 비밀번호 바꾸기 (바꾸기 전엔 다른 화면 못 감) -->
+  <section id="pwChange" class="hidden">
+    <nav class="nav"><span></span><h1></h1><button class="txt" type="button" id="pwLogoutBtn">로그아웃</button></nav>
+    <div class="login-head">
+      <div class="badge" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+      <h2>비밀번호를 바꿔주세요</h2>
+      <p><b id="pwUser"></b>님, 처음 비밀번호(0000)로 로그인했어요. 사용할 비밀번호로 바꾸면 시작할 수 있어요</p>
+    </div>
+    <form id="pwForm" class="stack field" novalidate>
+      <input id="newPw" type="password" placeholder="새 비밀번호 (6자 이상)" autocomplete="new-password" aria-label="새 비밀번호">
+      <input id="newPw2" type="password" placeholder="새 비밀번호 확인" autocomplete="new-password" aria-label="새 비밀번호 확인">
+      <button type="submit" class="hidden"></button>
+    </form>
+    <div class="cta-wrap"><button class="cta dark" id="pwBtn" type="button">바꾸고 시작하기</button></div>
+  </section>
+
   <!-- ⑤ 관리자 -->
   <section id="admin" class="hidden">
     <nav class="nav"><button class="icon" type="button" data-go="stepApply" aria-label="게스트 화면으로">‹</button><h1>관리자</h1><button class="txt" type="button" id="logoutBtn">로그아웃</button></nav>
@@ -409,6 +437,7 @@
         <button role="tab" aria-selected="true" data-set="setMeet">모임</button>
         <button role="tab" aria-selected="false" data-set="setBank">입금 계좌</button>
         <button role="tab" aria-selected="false" data-set="setAcc">계정</button>
+        <button role="tab" aria-selected="false" data-set="setUsers" class="hidden" id="setUsersTab">관리자</button>
       </div>
       <form class="form field" id="setMeet" novalidate>
         <p class="lbl">운동 날짜</p>
@@ -445,8 +474,16 @@
       <form class="form field hidden" id="setAcc" novalidate>
         <p class="lbl">새 비밀번호</p><input type="password" name="pw" autocomplete="new-password" placeholder="6자 이상">
         <p class="lbl">새 비밀번호 확인</p><input type="password" name="pw2" autocomplete="new-password">
+        <p class="hint" id="accHint"></p>
       </form>
-      <div class="cta-wrap"><button class="cta" id="saveBtn" type="button">저장</button></div>
+      <div class="form field hidden" id="setUsers">
+        <p class="lbl">관리자 추가</p>
+        <div class="adduser"><input id="newUserId" maxlength="20" placeholder="아이디" autocomplete="off" aria-label="추가할 관리자 아이디"><button type="button" id="addUserBtn">추가</button></div>
+        <p class="hint">처음 비밀번호는 0000이에요. 처음 로그인하면 바로 바꾸게 돼요</p>
+        <ul class="list" id="uList"></ul>
+        <div class="pager"><button type="button" id="uPrev" aria-label="이전 페이지">‹</button><span class="num" id="uPage">1 / 1</span><button type="button" id="uNext" aria-label="다음 페이지">›</button></div>
+      </div>
+      <div class="cta-wrap" id="saveWrap"><button class="cta" id="saveBtn" type="button">저장</button></div>
     </div>
   </section>
 </div>
@@ -526,7 +563,7 @@ async function copy(text){
     ta.remove(); return ok;
   }
 }
-const SECTIONS = ["stepApply","stepPay","adminLogin","admin"];
+const SECTIONS = ["stepApply","stepPay","adminLogin","pwChange","admin"];
 function show(id){ SECTIONS.forEach(s => $(s).classList.toggle("hidden", s !== id)); }
 document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { stopAdmin(); show(b.dataset.go); loadPublic(); }));
 
@@ -692,19 +729,38 @@ const ST = { mode: "day", month: "", year: "", page: 1, rows: [] };
 const STATS_PER_PAGE = 7;
 
 function stopAdmin(){ clearInterval(adminTimer); }
+let ME = null;   // 로그인한 관리자 { id, super, must_change, env }
 $("toAdmin").addEventListener("click", async () => {
-  try { await api("/api/admin/me"); openAdmin(); }
+  try { afterLogin(await api("/api/admin/me")); }
   catch { show("adminLogin"); setTimeout(() => $("adminId").focus(), 50); }
 });
 async function login(){
   try {
-    await api("/api/admin/login", { id: $("adminId").value.trim(), pw: $("adminPw").value });
-    $("adminPw").value = ""; openAdmin();
+    const info = await api("/api/admin/login", { id: $("adminId").value.trim(), pw: $("adminPw").value });
+    $("adminPw").value = ""; afterLogin(info);
   } catch (e) { toast(e.message); }
 }
-$("loginBtn").addEventListener("click", login);
-$("loginForm").addEventListener("submit", e => { e.preventDefault(); login(); });
-$("logoutBtn").addEventListener("click", async () => { try { await api("/api/admin/logout", {}); } catch {} stopAdmin(); show("stepApply"); toast("로그아웃했어요"); });
+// 처음 비밀번호(0000) 상태면 바꾸는 화면부터, 아니면 관리자 화면
+function afterLogin(info){
+  ME = info;
+  if (info.must_change) {
+    stopAdmin();
+    $("pwUser").textContent = info.id; $("newPw").value = $("newPw2").value = "";
+    show("pwChange"); setTimeout(() => $("newPw").focus(), 50);
+  } else openAdmin();
+}
+async function changeFirstPw(){
+  const a = $("newPw").value, b = $("newPw2").value;
+  if (a.length < 6) return toast("비밀번호는 6자 이상으로 해주세요");
+  if (a !== b) return toast("새 비밀번호가 서로 달라요");
+  try { await api("/api/admin/password", { pw: a }); toast("비밀번호를 바꿨어요"); afterLogin({ ...ME, must_change: false }); }
+  catch (e) { adminFail(e); }
+}
+$("pwBtn").addEventListener("click", changeFirstPw);
+$("pwForm").addEventListener("submit", e => { e.preventDefault(); changeFirstPw(); });
+async function logout(){ try { await api("/api/admin/logout", {}); } catch {} ME = null; stopAdmin(); show("stepApply"); toast("로그아웃했어요"); }
+$("logoutBtn").addEventListener("click", logout);
+$("pwLogoutBtn").addEventListener("click", logout);
 
 function adminFail(e){
   if (e.status === 401) { stopAdmin(); show("adminLogin"); toast("다시 로그인해주세요"); }
@@ -712,6 +768,10 @@ function adminFail(e){
 }
 function openAdmin(){
   show("admin");
+  // 관리자 관리는 슈퍼 관리자만
+  $("setUsersTab").classList.toggle("hidden", !ME?.super);
+  if (!ME?.super && setForm === "setUsers") pickSet("setMeet");
+  $("accHint").textContent = ME?.env ? "슈퍼 관리자 비밀번호는 Railway 환경변수(ADMIN_PW)에서 바꿔요" : "";
   L.date = S.meet_date || new Date().toLocaleDateString("sv-SE");
   L.page = 1;
   const now = new Date().toLocaleDateString("sv-SE");
@@ -870,13 +930,65 @@ $("sPgPrev").addEventListener("click", () => { ST.page--; renderStats(); });
 $("sPgNext").addEventListener("click", () => { ST.page++; renderStats(); });
 
 /* 설정 */
-let setForm = "setMeet";
-document.querySelectorAll("[data-set]").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll("[data-set]").forEach(x => x.setAttribute("aria-selected", x === b));
-  setForm = b.dataset.set;
-  ["setMeet","setBank","setAcc"].forEach(f => $(f).classList.toggle("hidden", f !== setForm));
+var setForm = "setMeet";
+function pickSet(id){
+  document.querySelectorAll("[data-set]").forEach(x => x.setAttribute("aria-selected", x.dataset.set === id));
+  setForm = id;
+  ["setMeet","setBank","setAcc","setUsers"].forEach(f => $(f).classList.toggle("hidden", f !== setForm));
+  $("saveWrap").classList.toggle("hidden", setForm === "setUsers");   // 관리자 관리는 줄마다 버튼이 있어 저장 버튼 없음
   $("saveBtn").textContent = setForm === "setAcc" ? "비밀번호 바꾸기" : "저장";
-}));
+  if (setForm === "setUsers") { U.page = 1; loadUsers(); }
+}
+document.querySelectorAll("[data-set]").forEach(b => b.addEventListener("click", () => pickSet(b.dataset.set)));
+
+/* 관리자 관리 (슈퍼 관리자만) */
+const U = { page: 1, rows: [] };
+async function loadUsers(){
+  try { U.rows = (await api("/api/admin/users")).users; renderUsers(); }
+  catch (e) { adminFail(e); }
+}
+function renderUsers(){
+  const ul = $("uList");
+  const per = Math.max(2, Math.floor((ul.clientHeight || 240) / 61));
+  const pages = Math.max(1, Math.ceil(U.rows.length / per));
+  U.page = Math.min(U.page, pages);
+  $("uPage").textContent = `${U.page} / ${pages}`;
+  $("uPrev").disabled = U.page <= 1; $("uNext").disabled = U.page >= pages;
+  if (!U.rows.length) { ul.innerHTML = `<li class="empty"><div><b>추가한 관리자가 없어요</b>아이디를 넣고 추가를 눌러주세요</div></li>`; return; }
+  ul.innerHTML = U.rows.slice((U.page - 1) * per, U.page * per).map(u => `
+    <li class="item">
+      <span class="ava">${esc(u.id.slice(0,1).toUpperCase())}</span>
+      <span class="who"><b>${esc(u.id)}</b>
+        <span class="${u.must_change ? "tag-no" : "tag-ok"}">${u.must_change ? "처음 비밀번호 0000" : "사용 중"}</span></span>
+      <span class="act">
+        <button class="btn-sm y" data-reset="${esc(u.id)}">비번 초기화</button>
+        <button class="btn-x" data-udel="${esc(u.id)}" aria-label="${esc(u.id)} 삭제">✕</button>
+      </span>
+    </li>`).join("");
+}
+async function addUser(){
+  const id = $("newUserId").value.trim();
+  if (!id) return toast("추가할 아이디를 입력해주세요");
+  try { await api("/api/admin/users/add", { id }); $("newUserId").value = ""; toast(`${id} 추가했어요 · 처음 비밀번호 0000`); loadUsers(); }
+  catch (e) { adminFail(e); }
+}
+$("addUserBtn").addEventListener("click", addUser);
+$("newUserId").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addUser(); } });
+$("uList").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  try {
+    if (b.dataset.reset) {
+      if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "0000으로?"; setTimeout(renderUsers, 2500); return; }
+      await api("/api/admin/users/reset", { id: b.dataset.reset }); toast("비밀번호를 0000으로 초기화했어요");
+    } else if (b.dataset.udel) {
+      if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "삭제"; setTimeout(renderUsers, 2500); return; }
+      await api("/api/admin/users/delete", { id: b.dataset.udel }); toast("삭제했어요");
+    }
+    loadUsers();
+  } catch (err) { adminFail(err); }
+});
+$("uPrev").addEventListener("click", () => { U.page--; renderUsers(); });
+$("uNext").addEventListener("click", () => { U.page++; renderUsers(); });
 function renderDateMode(){
   const fixed = $("dmFix").checked;
   $("meetDateInput").classList.toggle("hidden", !fixed);
@@ -916,6 +1028,10 @@ $("saveBtn").addEventListener("click", async () => {
 
 /* 시작: 진행 중이던 신청이 있으면 이어서 */
 (async function init(){
+  // 휴대폰에서만 사용 (게스트·관리자 모두). iPad는 PC처럼 보이는 경우가 있어 터치로 구분
+  const ua = navigator.userAgent;
+  const onPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (!onPhone) { $("mainApp").classList.add("hidden"); $("pcBlock").classList.remove("hidden"); return; }
   await loadPublic();
   try { me = JSON.parse(localStorage.getItem(ME_KEY) || "null"); } catch {}
   if (me) {
