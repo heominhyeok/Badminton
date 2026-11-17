@@ -258,7 +258,23 @@
         <input type="radio" name="level" id="lvN" value="초심"><label for="lvN">초심</label>
       </div>
     </form>
-    <div class="cta-wrap"><button class="cta" id="applyBtn" type="button">신청하고 계좌 받기</button></div>
+    <div class="cta-wrap" id="applyCta"><button class="cta" id="applyBtn" type="button">신청하고 계좌 받기</button></div>
+
+    <!-- 신청 완료되면 신청 입력 대신 이 안내만 -->
+    <div id="doneBox" class="hidden">
+      <div class="done">
+        <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+        <h2>운동 신청됐어요</h2>
+        <p>곧 체육관에서 만나요!</p>
+      </div>
+      <p class="sec-label">게스트 정보</p>
+      <ul class="kv">
+        <li><span>이름</span><b id="meName"></b></li>
+        <li><span>나이 · 성별</span><b id="meAgeGender"></b></li>
+        <li><span>급수</span><b id="meLevel"></b></li>
+        <li><span>게스트비</span><b class="num fee"></b></li>
+      </ul>
+    </div>
   </section>
 
   <!-- ② 송금 -->
@@ -288,30 +304,6 @@
       <i class="dot"></i>
       <div><b>입금 확인 중</b><br><span>총무가 입금을 확인하면 자동으로 신청 완료돼요</span></div>
     </div>
-  </section>
-
-  <!-- ③ 완료 -->
-  <section id="stepDone" class="hidden">
-    <div class="done">
-      <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-      <h2>게스트 신청 완료</h2>
-      <p id="doneSub">입금이 확인됐어요. 코트에서 만나요!</p>
-    </div>
-    <div class="acard green">
-      <span class="t" id="doneTitle"></span>
-      <span class="s">오늘 게스트 (입금 완료 기준)</span>
-      <span class="total">
-        <span class="split"><span id="cntM"></span><span id="cntF"></span></span>
-        <span class="big num"><span id="countDone"></span><small>명</small></span>
-      </span>
-    </div>
-    <ul class="kv">
-      <li><span>이름</span><b id="meName"></b></li>
-      <li><span>나이 · 성별</span><b id="meAgeGender"></b></li>
-      <li><span>급수</span><b id="meLevel"></b></li>
-      <li><span>게스트비</span><b class="num fee"></b></li>
-    </ul>
-    <div class="cta-wrap"><button class="cta dark" id="okBtn" type="button">다른 사람 신청하기</button></div>
   </section>
 
   <!-- ④ 관리자 로그인 -->
@@ -523,7 +515,7 @@ async function copy(text){
     ta.remove(); return ok;
   }
 }
-const SECTIONS = ["stepApply","stepPay","stepDone","adminLogin","admin"];
+const SECTIONS = ["stepApply","stepPay","adminLogin","admin"];
 function show(id){ SECTIONS.forEach(s => $(s).classList.toggle("hidden", s !== id)); }
 document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { stopAdmin(); show(b.dataset.go); loadPublic(); }));
 
@@ -537,7 +529,6 @@ function renderPublic(data){
   S = data.settings;
   const c = data.counts;
   $("meetTitle").textContent = `${fmtDate(S.meet_date)} ${S.meet_title || ""}`.trim();
-  $("doneTitle").textContent = $("meetTitle").textContent;
   $("meetTime").textContent = S.meet_time || "";
   $("meetPlace").textContent = S.meet_place || "";
   $("meetPlaceWrap").classList.toggle("hidden", !S.meet_place);
@@ -550,11 +541,6 @@ function renderPublic(data){
 async function loadPublic(){
   try { renderPublic(await api("/api/public")); }
   catch (e) { toast(e.message); }
-}
-function renderCounts(c){
-  $("countDone").textContent = c.confirmed;
-  $("cntM").textContent = "남 " + c.male;
-  $("cntF").textContent = "여 " + c.female;
 }
 
 const picked = n => document.querySelector(`input[name="${n}"]:checked`)?.value;
@@ -593,15 +579,22 @@ async function checkStatus(){
     if (e.status === 404) { clearInterval(pollTimer); forgetMe(); toast("신청이 취소됐어요. 다시 신청해주세요"); show("stepApply"); loadPublic(); }
   }
 }
-function finish(c){
+// 신청 화면에서 입력 부분 ↔ 완료 안내 바꾸기 (위쪽 운동 정보 카드는 그대로)
+function setDone(on){
+  $("applyForm").classList.toggle("hidden", on);
+  $("applyCta").classList.toggle("hidden", on);
+  $("doneBox").classList.toggle("hidden", !on);
+}
+function finish(){
   clearInterval(pollTimer);
-  renderCounts(c);
   $("meName").textContent = me.name;
   $("meAgeGender").textContent = `${me.age} · ${me.gender}`;
   $("meLevel").textContent = me.level;
-  show("stepDone");
+  setDone(true);
+  show("stepApply");
+  loadPublic();     // 오늘 게스트 수 새로
 }
-function forgetMe(){ me = null; try { localStorage.removeItem(ME_KEY); } catch {} }
+function forgetMe(){ me = null; setDone(false); try { localStorage.removeItem(ME_KEY); } catch {} }
 
 function openApp(url, fallbackMsg, onFail){
   const t = setTimeout(() => { if (!document.hidden) onFail ? onFail() : toast(fallbackMsg); }, 1800);
@@ -680,7 +673,6 @@ $("cancelBtn").addEventListener("click", async () => {
   forgetMe(); show("stepApply"); loadPublic(); toast("신청을 취소했어요");
 });
 // 완료 화면은 그날 내내 유지. 친구 신청 등 다른 사람을 받을 때만 기록을 지우고 신청 화면으로
-$("okBtn").addEventListener("click", () => { $("applyForm").reset(); forgetMe(); show("stepApply"); loadPublic(); });
 
 /* ───────── 관리자 ───────── */
 let adminTimer = null;
@@ -919,7 +911,7 @@ $("saveBtn").addEventListener("click", async () => {
     try {
       const r = await api(`/api/status?id=${me.id}&token=${encodeURIComponent(me.token)}`);
       if (r.meet_date !== S.meet_date) forgetMe();          // 지난 운동일 신청이면 새로 시작
-      else if (r.status === "신청완료") { finish(r.counts); $("doneSub").textContent = "오늘 이미 신청됐어요. 코트에서 만나요!"; }
+      else if (r.status === "신청완료") finish();
       else toPay();
     } catch { forgetMe(); }
   }
