@@ -12,7 +12,10 @@ from urllib.parse import urlparse, parse_qs
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC = os.path.join(BASE, 'public')
-DATA = os.path.join(BASE, 'data')
+# 데이터 폴더: DATA_DIR > Railway 볼륨 경로 > ./data
+DATA = os.environ.get('DATA_DIR') or os.environ.get('RAILWAY_VOLUME_MOUNT_PATH') or os.path.join(BASE, 'data')
+# 서버 주소: HOST 지정 없으면 Railway에선 0.0.0.0, 로컬에선 127.0.0.1
+HOST = os.environ.get('HOST') or ('0.0.0.0' if os.environ.get('RAILWAY_ENVIRONMENT') else '127.0.0.1')
 DB_FILE = os.path.join(DATA, 'badminton.db')
 KEY_FILE = os.path.join(DATA, 'access_key.txt')
 ADMIN_FILE = os.path.join(DATA, 'admin.json')
@@ -97,6 +100,8 @@ def counts(meet_date):
 
 # ── 접속 키 · 관리자 ───────────────────────────────
 def access_key():
+    if os.environ.get('ACCESS_KEY'):
+        return os.environ['ACCESS_KEY']
     if not os.path.exists(KEY_FILE):
         with open(KEY_FILE, 'w', encoding='utf-8') as f:
             f.write(secrets.token_urlsafe(6))
@@ -108,7 +113,9 @@ HOOK_KEY_FILE = os.path.join(DATA, 'hook_key.txt')
 
 
 def hook_key():
-    """폰 알림 전달 앱이 쓰는 비밀키 (data/hook_key.txt)"""
+    """폰 알림 전달 앱이 쓰는 비밀키 (환경변수 HOOK_KEY 또는 data/hook_key.txt)"""
+    if os.environ.get('HOOK_KEY'):
+        return os.environ['HOOK_KEY']
     if not os.path.exists(HOOK_KEY_FILE):
         with open(HOOK_KEY_FILE, 'w', encoding='utf-8') as f:
             f.write(secrets.token_urlsafe(16))
@@ -538,6 +545,6 @@ if __name__ == '__main__':
     init_db()
     admin_conf()
     hook_key()
-    srv = ThreadingHTTPServer(('127.0.0.1', PORT), H)
-    print(f'게스트 신청 서버: http://127.0.0.1:{PORT}  접속 키: {access_key()}', flush=True)
+    srv = ThreadingHTTPServer((HOST, PORT), H)
+    print(f'게스트 신청 서버: http://{HOST}:{PORT}  데이터: {DATA}', flush=True)
     srv.serve_forever()
