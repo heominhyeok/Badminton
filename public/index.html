@@ -42,6 +42,7 @@
   .nav h1{text-align:center;font-size:16px;font-weight:600}
   .nav .icon{width:40px;height:40px;border:0;background:none;font-size:22px;display:grid;place-items:center}
   .nav .txt{justify-self:end;border:0;background:none;font-size:13px;color:var(--sub);padding:8px}
+  .nav .txt.l{justify-self:start;color:var(--ink);font-weight:600}
 
   /* 통장 카드 */
   .acard{display:block;width:100%;text-align:left;border:0;border-radius:12px;padding:14px 18px 16px;margin-bottom:10px;color:#fff;position:relative;transition:transform .12s}
@@ -218,7 +219,7 @@
 
   <!-- ① 신청 -->
   <section id="stepApply">
-    <nav class="nav"><span></span><h1>게스트 신청</h1><button class="txt" type="button" id="toAdmin">관리자</button></nav>
+    <nav class="nav"><button class="txt l hidden" type="button" id="installBtn">앱 설치</button><h1>게스트 신청</h1><button class="txt" type="button" id="toAdmin">관리자</button></nav>
 
     <div class="acard yellow">
       <span class="t"><span id="meetTitle"></span><span class="tag" id="seatText"></span></span>
@@ -473,6 +474,15 @@
     <button class="sheet-close" type="button" id="kSheetClose">닫기</button>
   </div>
 </div>
+<!-- 앱 설치(홈 화면에 추가) 안내 -->
+<div class="sheet-bg hidden" id="iSheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="iSheetTitle">
+    <h3 id="iSheetTitle">홈 화면에 앱으로 설치하기</h3>
+    <ol class="steps" id="iSteps"></ol>
+    <p class="hint" id="iSheetNote" style="font-size:13px;color:var(--sub);margin:-4px 0 12px"></p>
+    <button class="cta" type="button" id="iSheetClose">알겠어요</button>
+  </div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -495,6 +505,31 @@ const $ = id => document.getElementById(id);
 
 // 앱 설치(홈 화면에 추가)용
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+
+// "앱 설치" 버튼: 안드로이드 크롬은 바로 설치 창, 그 밖(아이폰·카톡 안 브라우저 등)은 방법 안내
+(() => {
+  const ua = navigator.userAgent;
+  const installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const btn = $("installBtn");
+  if (installed || !/Android|iPhone|iPad|iPod/i.test(ua)) return;   // 이미 앱으로 열었거나 PC면 숨김
+  btn.classList.remove("hidden");
+  let prompt = null;
+  addEventListener("beforeinstallprompt", e => { e.preventDefault(); prompt = e; });
+  addEventListener("appinstalled", () => btn.classList.add("hidden"));
+  const isIOS = /iPhone|iPad|iPod/i.test(ua), inApp = /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(ua);
+  btn.addEventListener("click", async () => {
+    if (prompt) { prompt.prompt(); const r = await prompt.userChoice; prompt = null; if (r.outcome === "accepted") btn.classList.add("hidden"); return; }
+    const steps = inApp
+      ? (isIOS ? ["오른쪽 아래 <b>⋯</b> 또는 공유 버튼을 누르고", "<b>Safari로 열기</b>를 고른 뒤", "Safari에서 다시 <b>앱 설치</b>를 눌러주세요"]
+               : ["오른쪽 위 <b>⋮</b> 메뉴를 누르고", "<b>다른 브라우저로 열기</b>(크롬)를 고른 뒤", "크롬에서 다시 <b>앱 설치</b>를 눌러주세요"])
+      : isIOS ? ["아래 가운데 <b>공유 버튼</b>(네모에 화살표)을 누르고", "목록을 내려 <b>홈 화면에 추가</b>를 고른 뒤", "오른쪽 위 <b>추가</b>를 누르면 끝"]
+              : ["오른쪽 위 <b>⋮</b> 메뉴를 누르고", "<b>홈 화면에 추가</b> 또는 <b>앱 설치</b>를 고른 뒤", "<b>설치</b>(추가)를 누르면 끝"];
+    $("iSteps").innerHTML = steps.map(s => `<li><span>${s}</span></li>`).join("");
+    $("iSheetNote").textContent = inApp ? "카카오톡 같은 앱 안에서는 바로 설치할 수 없어요" : "홈 화면의 '상도초 게스트' 아이콘으로 바로 들어올 수 있어요";
+    $("iSheet").classList.remove("hidden");
+  });
+  $("iSheet").addEventListener("click", e => { if (e.target.id === "iSheet" || e.target.id === "iSheetClose") $("iSheet").classList.add("hidden"); });
+})();
 const won = n => Number(n || 0).toLocaleString("ko-KR") + "원";
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const prettyAcct = a => (a || "").replace(/(\d{4})(\d{2})(\d+)/, "$1-$2-$3");
