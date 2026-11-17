@@ -2,7 +2,7 @@
 
 - public/ 폴더의 화면을 내보내고, /api/* 로 신청·입금확인·통계·설정을 처리한다
 - 저장소: data/badminton.db (SQLite)
-- 외부 주소(터널)로 들어오면 접속 키 필요: data/access_key.txt (링크에 ?key=키)
+- 게스트는 키 없이 바로 접속. REQUIRE_KEY=1 이면 외부 접속에 키 필요 (data/access_key.txt, 링크에 ?key=키)
 - 관리자 로그인: data/admin.json (처음 실행 때 아이디 admin, 비밀번호를 새로 만들어 콘솔에 한 번 출력)
 """
 import hashlib, json, os, re, secrets, sqlite3, threading
@@ -190,7 +190,10 @@ class H(SimpleHTTPRequestHandler):
         return self.client_address[0] == '127.0.0.1' and 'Cf-Connecting-Ip' not in self.headers
 
     def gate(self):
-        """접속 키 통과면 True. 아니면 응답을 보내고 False"""
+        """접속 키 통과면 True. 아니면 응답을 보내고 False
+        게스트는 바로 들어와야 하므로 기본은 열어둠. 환경변수 REQUIRE_KEY=1 일 때만 키를 받음"""
+        if not os.environ.get('REQUIRE_KEY'):
+            return True
         if self.is_local() or self.cookie('gp_key') == access_key():
             return True
         if self.path.startswith('/api/hook/'):      # 폰 알림 전달은 자체 비밀키로 확인

@@ -21,7 +21,8 @@ python -X utf8 server.py
 - GitHub `main`에 올리면 자동 배포 (시작 명령은 `railway.json`)
 - 볼륨을 `/data`에 붙임 → `RAILWAY_VOLUME_MOUNT_PATH`로 DB·키 파일이 볼륨에 저장됨
 - 환경변수 (Variables 탭)
-  - `ACCESS_KEY` 외부 접속 키 (없으면 볼륨의 access_key.txt 자동 생성)
+  - `REQUIRE_KEY` `1`로 두면 접속 키를 받음 (기본은 게스트가 키 없이 바로 접속)
+  - `ACCESS_KEY` 외부 접속 키 (REQUIRE_KEY일 때만 사용, 없으면 볼륨의 access_key.txt 자동 생성)
   - `HOOK_KEY` 입금 알림 비밀키 (없으면 볼륨의 hook_key.txt 자동 생성)
   - `DATA_DIR` 데이터 폴더 직접 지정 (선택), `HOST` 서버 주소 (Railway에선 자동 0.0.0.0)
 
