@@ -428,6 +428,11 @@
 
     <!-- 입금 알림 -->
     <div class="pane hidden" id="tabDep">
+      <div class="datebar">
+        <button type="button" id="pvPrev" aria-label="전날">‹</button>
+        <label><span id="pvLabel"></span><span class="today hidden" id="pvToday">오늘</span><input type="date" id="pvInput" aria-label="날짜 선택"></label>
+        <button type="button" id="pvNext" aria-label="다음날">›</button>
+      </div>
       <div class="acard slate" style="margin-bottom:8px">
         <span class="t">폰에서 받은 입금 알림</span>
         <span class="s">자동 확인은 이름과 금액이 둘 다 맞을 때만 돼요</span>
@@ -924,12 +929,17 @@ document.querySelectorAll("[data-f]").forEach(b => b.addEventListener("click", (
 }));
 
 /* 입금 알림 기록 */
-const DP = { page: 1 };
+const DP = { page: 1, date: "" };    // date 비어 있으면 서버가 오늘로
 async function loadDeposits(){
   try {
     const h = $("dList").clientHeight || 300;
-    const r = await api(`/api/admin/deposits?page=${DP.page}&size=${Math.max(3, Math.floor(h / 59))}`);
-    DP.page = r.page;
+    const q = new URLSearchParams({ page: DP.page, size: Math.max(3, Math.floor(h / 59)) });
+    if (DP.date) q.set("date", DP.date);
+    const r = await api("/api/admin/deposits?" + q);
+    DP.page = r.page; DP.date = r.date;
+    $("pvLabel").textContent = shortDate(r.date);
+    $("pvInput").value = r.date;
+    $("pvToday").classList.toggle("hidden", r.date !== r.today);
     $("dTotal").textContent = r.total;
     $("dMatched").textContent = r.matched;
     $("dPage").textContent = `${r.page} / ${r.pages}`;
@@ -944,10 +954,21 @@ async function loadDeposits(){
         <span class="time num"><b>${hm}</b><span>${when}</span></span>
         <span class="who"><b>${esc(x.sender || "-")}</b>${tag}</span>
         <span class="amt num">${x.amount == null ? "-" : won(x.amount)}</span>
+        ${ME && ME.super ? `<button class="btn-x" data-ddel="${x.id}" aria-label="알림 삭제">✕</button>` : ""}
       </li>`;
-    }).join("") : `<li class="empty"><div><b>아직 받은 입금 알림이 없어요</b>폰에 입금 알림이 오면 여기에 바로 보여요</div></li>`;
+    }).join("") : `<li class="empty"><div><b>이 날 받은 입금 알림이 없어요</b>폰에 입금 알림이 오면 여기에 바로 보여요</div></li>`;
   } catch (e) { adminFail(e); }
 }
+// 슈퍼 관리자: 필요 없는 알림 삭제 (두 번 눌러 확인, 신청 상태는 안 바뀜)
+$("dList").addEventListener("click", async e => {
+  const b = e.target.closest("[data-ddel]"); if (!b) return;
+  if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "삭제"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "✕"; }, 2500); return; }
+  try { await api("/api/admin/deposits/delete", { id: +b.dataset.ddel }); toast("알림을 삭제했어요"); loadDeposits(); }
+  catch (err) { adminFail(err); }
+});
+$("pvPrev").addEventListener("click", () => { DP.date = addDays(DP.date, -1); DP.page = 1; loadDeposits(); });
+$("pvNext").addEventListener("click", () => { DP.date = addDays(DP.date, 1); DP.page = 1; loadDeposits(); });
+$("pvInput").addEventListener("change", e => { if (e.target.value) { DP.date = e.target.value; DP.page = 1; loadDeposits(); } });
 $("dPgPrev").addEventListener("click", () => { DP.page--; loadDeposits(); });
 $("dPgNext").addEventListener("click", () => { DP.page++; loadDeposits(); });
 

@@ -308,7 +308,7 @@ class H(SimpleHTTPRequestHandler):
                     raise ApiError('관리자 로그인이 필요해요', 401)
                 if sess['must_change'] and p not in ('/api/admin/me', '/api/admin/logout', '/api/admin/password'):
                     raise ApiError('처음 비밀번호를 먼저 바꿔주세요', 403)
-                if p.startswith('/api/admin/users') and not sess['super']:
+                if (p.startswith('/api/admin/users') or p == '/api/admin/deposits/delete') and not sess['super']:
                     raise ApiError('슈퍼 관리자만 할 수 있어요', 403)
             handler = ROUTES.get((method, p))
             if not handler:
@@ -449,18 +449,28 @@ def hook_deposit(h, q, d):
 
 
 def admin_deposits(h, q, d):
-    """폰에서 넘어온 입금 알림 기록 (최신순, 페이지)"""
+    """폰에서 넘어온 입금 알림 기록 — 받은 날짜별 (최신순, 페이지). date 없으면 오늘"""
     size = max(1, min(int(q.get('size') or 8), 50))
     page = max(1, int(q.get('page') or 1))
+    date = q.get('date') or today()
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜 형식이 맞지 않아요')
     with db() as con:
-        total = con.execute('SELECT COUNT(*) FROM deposit').fetchone()[0]
-        matched = con.execute('SELECT COUNT(*) FROM deposit WHERE guest_id IS NOT NULL').fetchone()[0]
+        total = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=?', (date,)).fetchone()[0]
+        matched = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=? AND guest_id IS NOT NULL', (date,)).fetchone()[0]
         pages = max(1, -(-total // size)); page = min(page, pages)
         rows = [dict(r) for r in con.execute(
             '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, g.name guest_name, g.status guest_status
-               FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id ORDER BY d.id DESC LIMIT ? OFFSET ?''',
-            (size, (page - 1) * size))]
-    h.json({'deposits': rows, 'page': page, 'pages': pages, 'total': total, 'matched': matched, 'today': today()})
+               FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id WHERE substr(d.received_at,1,10)=?
+               ORDER BY d.id DESC LIMIT ? OFFSET ?''',
+            (date, size, (page - 1) * size))]
+    h.json({'deposits': rows, 'date': date, 'page': page, 'pages': pages, 'total': total, 'matched': matched, 'today': today()})
+
+
+def admin_deposit_delete(h, q, d):
+    """입금 알림 기록 한 줄 삭제 (슈퍼 관리자만). 기록만 지우고 신청 상태는 그대로"""
+    with LOCK, db() as con:
+        con.execute('DELETE FROM deposit WHERE id=?', (d.get('id'),))
+    h.json({'ok': True})
 
 
 # ── 관리자 API ─────────────────────────────────────
@@ -664,6 +674,7 @@ ROUTES = {
     ('GET', '/api/admin/deposits'): admin_deposits,
     ('GET', '/api/admin/users'): users_list,
     ('POST', '/api/admin/users/add'): users_add,
+    ('POST', '/api/admin/deposits/delete'): admin_deposit_delete,
     ('POST', '/api/admin/users/reset'): users_reset,
     ('POST', '/api/admin/users/delete'): users_delete,
     ('POST', '/api/hook/deposit'): hook_deposit,
