@@ -352,13 +352,11 @@ def apply(h, q, d):
     s = settings()
     if not s['account_no']: raise ApiError('아직 입금 계좌가 설정되지 않았어요. 총무에게 알려주세요')
     with LOCK, db() as con:
-        # 같은 날 이름·나이대·성별·급수가 모두 같은 신청이 있으면 중복 신청으로 막음
-        dup = con.execute('''SELECT status, pay_name FROM guest WHERE meet_date=? AND name=? AND age=? AND gender=? AND level=?''',
-                          (s['meet_date'], name, age, gender, level)).fetchone()
+        # 같은 날 이름만 같아도 막음 (다른 브라우저로 다시 신청하는 것 방지, 사용자 결정 2026-11-18)
+        dup = con.execute("SELECT 1 FROM guest WHERE meet_date=? AND REPLACE(name,' ','')=?",
+                          (s['meet_date'], name.replace(' ', ''))).fetchone()
         if dup:
-            if dup['status'] == '신청완료':
-                raise ApiError('오늘 이미 신청이 완료됐어요', 409)
-            raise ApiError(f"이미 신청돼 있어요. '{dup['pay_name']}' 이름으로 게스트비를 입금해주세요", 409)
+            raise ApiError('이미 같은 이름으로 신청한 사람이 있어요. 게스트 본인이 신청해주세요', 409)
         n = con.execute('SELECT COUNT(*) FROM guest WHERE meet_date=?', (s['meet_date'],)).fetchone()[0]
         if n >= int(s['max_guests'] or 0): raise ApiError('오늘 게스트 자리가 다 찼어요')
         token = secrets.token_urlsafe(12)
