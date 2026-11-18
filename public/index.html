@@ -675,7 +675,7 @@ function lockPay(on){
   clearTimeout(sentTimer);
   $("stepPay").classList.toggle("sent", on);
   $("waitTitle").textContent = on ? "입금 확인 중이에요" : "입금 확인 중";
-  $("waitText").textContent = on ? "잠시만 기다려 주세요. 보통 몇 초면 확인돼요" : "총무가 입금을 확인하면 자동으로 신청 완료돼요";
+  $("waitText").textContent = on ? "이미 보냈다면 다시 보내지 마세요. 보통 몇 초면 확인돼요" : "총무가 입금을 확인하면 자동으로 신청 완료돼요";
   if (on) sentTimer = setTimeout(() => lockPay(false), 60000);
 }
 function sentBack(){ lockPay(true); checkStatus(); }
@@ -688,14 +688,21 @@ async function pay(m){
   if (m === "toss") {
     // 토스 송금 딥링크(비공식 형식 — 실기기 테스트 필요)
     const q = new URLSearchParams({ amount: S.fee, bank: S.bank_name, accountNo: S.account_no, origin: "qr" });
-    return openApp("supertoss://send?" + q, "토스 앱이 없으면 계좌번호 복사를 이용해주세요", null, sentBack);
+    lockPay(true);      // 누르는 순간 잠금 (돌아온 걸 알 수 없는 브라우저도 있어서)
+    return openApp("supertoss://send?" + q, null,
+      () => { lockPay(false); toast("토스 앱이 없으면 계좌번호 복사를 이용해주세요"); }, sentBack);
   }
   // 카카오페이 계좌송금 앱링크 (카카오페이 공식 가이드 v1.0): 은행·계좌·금액이 채워진 송금 화면
   const code = KAKAO_BANK[S.bank_name];
   if (!code) return kakaoGuide(acct);
   const q = new URLSearchParams({ bank_code: code, bank_account_number: S.account_no, amount: S.fee });
   // 휴대폰 시험 결과(2026-11-16): kakaotalk:// 경유가 계좌·금액 채워진 송금 화면으로 열림. kakaopay:// 직접은 QR 스캔 화면이 떠서 안 씀
-  openApp("kakaotalk://kakaopay/money/to/bank?" + q, null, () => kakaoGuide(acct), sentBack);
+  lockPay(true);
+  // 카톡 안 브라우저에서는 송금 화면이 같은 앱 안에서 열려 '화면이 가려졌다'는 신호가 안 옴
+  // → 안 열린 줄 알고 계좌 안내를 띄우면 이미 보낸 사람이 또 보냄 (2026-11-18 실제 발생). 카톡 안에서는 항상 열리므로 안내 생략
+  const inKakao = /KAKAOTALK/i.test(navigator.userAgent);
+  openApp("kakaotalk://kakaopay/money/to/bank?" + q, null,
+    inKakao ? () => {} : () => { lockPay(false); kakaoGuide(acct); }, sentBack);
 }
 /* 카카오페이 금융기관코드 (공식 가이드 표 기준, 설정 화면의 은행 이름 → 코드) */
 const KAKAO_BANK = {
