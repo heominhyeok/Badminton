@@ -199,6 +199,8 @@
   #setUsers .adduser input{flex:1;min-width:0}
   .adduser button{flex:none;border:0;border-radius:12px;padding:0 20px;background:var(--ink);color:var(--bg);font-size:15px;font-weight:700}
   #uList{margin-top:4px}
+  .push-state{background:var(--field);border-radius:12px;padding:13px 16px;font-size:14px;font-weight:600;margin-bottom:10px}
+  #setPush .cta{width:100%;margin-bottom:6px}
   .pager{display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 0 calc(10px + env(safe-area-inset-bottom));flex:none}
   .pager button{width:34px;height:34px;border:0;border-radius:10px;background:var(--field);font-size:16px}
   .pager button:disabled{opacity:.35;cursor:default}
@@ -451,6 +453,7 @@
         <button role="tab" aria-selected="true" data-set="setMeet">모임</button>
         <button role="tab" aria-selected="false" data-set="setBank">입금 계좌</button>
         <button role="tab" aria-selected="false" data-set="setAcc">계정</button>
+        <button role="tab" aria-selected="false" data-set="setPush">알림</button>
         <button role="tab" aria-selected="false" data-set="setUsers" class="hidden" id="setUsersTab">관리자</button>
       </div>
       <form class="form field" id="setMeet" novalidate>
@@ -490,6 +493,14 @@
         <p class="lbl">새 비밀번호 확인</p><input type="password" name="pw2" autocomplete="new-password">
         <p class="hint" id="accHint"></p>
       </form>
+      <div class="form field hidden" id="setPush">
+        <p class="lbl">이 휴대폰 알림</p>
+        <p class="push-state" id="pushState">확인 중…</p>
+        <button class="cta hidden" type="button" id="pushOnBtn">알림 받기</button>
+        <button class="cta dark hidden" type="button" id="pushOffBtn">알림 끄기</button>
+        <p class="hint">게스트 입금이 완료되면 이름 · 나이대 · 성별 · 급수로 알려드려요. 로그아웃해도 계속 와요</p>
+        <p class="hint">아이폰은 사파리에서 '홈 화면에 추가'한 앱으로 열어야 받을 수 있어요</p>
+      </div>
       <div class="form field hidden" id="setUsers">
         <p class="lbl">관리자 추가</p>
         <div class="adduser"><input id="newUserId" maxlength="20" placeholder="아이디" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="추가할 관리자 아이디"><button type="button" id="addUserBtn">추가</button></div>
@@ -1020,11 +1031,58 @@ var setForm = "setMeet";
 function pickSet(id){
   document.querySelectorAll("[data-set]").forEach(x => x.setAttribute("aria-selected", x.dataset.set === id));
   setForm = id;
-  ["setMeet","setBank","setAcc","setUsers"].forEach(f => $(f).classList.toggle("hidden", f !== setForm));
-  $("saveWrap").classList.toggle("hidden", setForm === "setUsers");   // 관리자 관리는 줄마다 버튼이 있어 저장 버튼 없음
+  ["setMeet","setBank","setAcc","setPush","setUsers"].forEach(f => $(f).classList.toggle("hidden", f !== setForm));
+  $("saveWrap").classList.toggle("hidden", setForm === "setUsers" || setForm === "setPush");   // 줄마다·화면마다 버튼이 있어 저장 버튼 없음
   $("saveBtn").textContent = setForm === "setAcc" ? "비밀번호 바꾸기" : "저장";
   if (setForm === "setUsers") { U.page = 1; loadUsers(); }
+  if (setForm === "setPush") pushRefresh();
 }
+
+/* 관리자 폰 알림 (입금 완료된 게스트) — 이 휴대폰 브라우저에 등록, 로그아웃해도 유지 */
+const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const b64ToU8 = s => { const b = atob((s + "===".slice((s.length + 3) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+async function pushRefresh(){
+  const on = $("pushOnBtn"), off = $("pushOffBtn"), st = $("pushState");
+  if (!pushSupported) {
+    on.classList.add("hidden"); off.classList.add("hidden");
+    st.textContent = /iPhone|iPad|iPod/.test(navigator.userAgent)
+      ? "사파리에서 '홈 화면에 추가'한 앱으로 열어야 알림을 켤 수 있어요"
+      : "이 브라우저는 알림을 지원하지 않아요. 크롬으로 열어주세요";
+    return;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  st.textContent = sub ? "🔔 알림 받는 중이에요"
+    : Notification.permission === "denied" ? "알림이 차단돼 있어요. 휴대폰 설정에서 이 앱의 알림을 허용해주세요"
+    : "알림이 꺼져 있어요";
+  on.classList.toggle("hidden", !!sub); off.classList.toggle("hidden", !sub);
+}
+async function pushOn(){
+  const btn = $("pushOnBtn"); btn.disabled = true;
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { toast("알림을 허용해야 받을 수 있어요"); return; }
+    const { key } = await api("/api/admin/push/key");
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+    await api("/api/admin/push/subscribe", { sub: sub.toJSON() });
+    toast("이제 입금 완료된 게스트를 알려드려요");
+  } catch (e) { e.status ? adminFail(e) : toast("알림을 켜지 못했어요: " + (e.message || e)); }
+  finally { btn.disabled = false; pushRefresh(); }
+}
+async function pushOff(){
+  const btn = $("pushOffBtn"); btn.disabled = true;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) { await api("/api/admin/push/unsubscribe", { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+    toast("알림을 껐어요");
+  } catch (e) { e.status ? adminFail(e) : toast("알림을 끄지 못했어요"); }
+  finally { btn.disabled = false; pushRefresh(); }
+}
+$("pushOnBtn").addEventListener("click", pushOn);
+$("pushOffBtn").addEventListener("click", pushOff);
 document.querySelectorAll("[data-set]").forEach(b => b.addEventListener("click", () => pickSet(b.dataset.set)));
 
 /* 관리자 관리 (슈퍼 관리자만) */

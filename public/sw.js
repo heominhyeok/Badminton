@@ -11,3 +11,19 @@ self.addEventListener('fetch', e => {
     '<p style="color:#8E8E93;font-size:14px">연결을 확인한 뒤 다시 열어주세요</p></div>',
     {headers: {'Content-Type': 'text/html; charset=utf-8'}})));
 });
+
+// 관리자 폰 알림: 서버가 보낸 '입금 완료된 게스트' 알림을 띄우고, 누르면 앱을 연다
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || '상도초 게스트', {
+    body: d.body || '', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: 'guest-' + Date.now()
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    for (const c of list) if ('focus' in c) return c.focus();
+    return self.clients.openWindow('/');
+  }));
+});

@@ -75,6 +75,11 @@ def init_db():
             must_change INTEGER NOT NULL DEFAULT 1,  -- 1이면 처음 비밀번호(0000) 상태 → 로그인 후 바로 바꿔야 함
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS push_sub (   -- 관리자 폰 알림 주소 (로그아웃해도 유지)
+            endpoint TEXT PRIMARY KEY,
+            p256dh TEXT NOT NULL, auth TEXT NOT NULL,
+            admin_id TEXT NOT NULL, created_at TEXT NOT NULL
+        );
         ''')
         for k, v in DEFAULT_SETTINGS.items():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
@@ -444,6 +449,7 @@ def hook_deposit(h, q, d):
             con.execute("UPDATE guest SET status='신청완료', paid_at=? WHERE id=?", (now(), gid))
         con.execute('INSERT INTO deposit(received_at, raw, sender, amount, guest_id) VALUES (?,?,?,?,?)',
                     (now(), raw[:500], sender, amount, gid))
+    if gid: notify_paid(gid)
     h.json({'ok': True, 'sender': sender, 'amount': amount, 'matched_guest_id': gid,
             'result': '자동으로 입금 확인했어요' if gid else '맞는 신청이 없어서 기록만 했어요'})
 
@@ -470,6 +476,97 @@ def admin_deposit_delete(h, q, d):
     """입금 알림 기록 한 줄 삭제 (슈퍼 관리자만). 기록만 지우고 신청 상태는 그대로"""
     with LOCK, db() as con:
         con.execute('DELETE FROM deposit WHERE id=?', (d.get('id'),))
+    h.json({'ok': True})
+
+
+# ── 관리자 폰 알림 (웹 푸시) ─────────────────────────
+# 알림을 켠 관리자 폰에 '입금 완료된 게스트'만 알린다. 로그아웃해도 알림 주소는 남아서 계속 받음
+try:
+    from pywebpush import webpush, WebPushException
+    from py_vapid import Vapid02
+    from cryptography.hazmat.primitives import serialization
+    import base64
+    PUSH_OK = True
+except ImportError:          # 라이브러리가 없으면 알림 기능만 꺼짐 (나머지는 그대로 동작)
+    PUSH_OK = False
+VAPID_FILE = os.path.join(DATA, 'vapid_private.pem')
+
+
+def vapid():
+    """푸시 서명 키 (처음에 만들어 볼륨에 보관 — 바뀌면 기존 알림 등록이 모두 무효가 되므로 유지)"""
+    if not os.path.exists(VAPID_FILE):
+        v = Vapid02(); v.generate_keys(); v.save_key(VAPID_FILE)
+    return Vapid02.from_file(VAPID_FILE)
+
+
+def vapid_public():
+    raw = vapid().public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+    return base64.urlsafe_b64encode(raw).rstrip(b'=').decode()
+
+
+def push_log(msg):
+    with open(os.path.join(DATA, 'push.log'), 'a', encoding='utf-8') as f:
+        f.write(f'{now()} {msg}\n')
+
+
+def push_all(title, body):
+    """등록된 관리자 폰 전부에 알림 (응답을 늦추지 않게 따로 실행). 없어진 등록은 지움"""
+    if not PUSH_OK: return
+    with db() as con:
+        subs = [dict(r) for r in con.execute('SELECT * FROM push_sub')]
+        origin = (con.execute("SELECT value FROM setting WHERE key='push_origin'").fetchone() or {'value': ''})['value']
+    if not subs: return
+    payload = json.dumps({'title': title, 'body': body})
+    claims_sub = origin if origin.startswith('https://') else 'mailto:admin@example.com'
+
+    def run():
+        key = vapid()
+        for s in subs:
+            info = {'endpoint': s['endpoint'], 'keys': {'p256dh': s['p256dh'], 'auth': s['auth']}}
+            try:
+                webpush(info, payload, vapid_private_key=key, vapid_claims={'sub': claims_sub}, ttl=86400)
+                push_log(f"보냄 {s['admin_id']} | {body}")
+            except WebPushException as e:
+                code = getattr(e.response, 'status_code', None)
+                push_log(f"실패 {s['admin_id']} {code} | {e}")
+                if code in (404, 410):      # 폰에서 알림을 끊었거나 앱을 지운 경우
+                    with db() as con: con.execute('DELETE FROM push_sub WHERE endpoint=?', (s['endpoint'],))
+            except Exception as e:
+                push_log(f"실패 {s['admin_id']} | {e}")
+    threading.Thread(target=run, daemon=True).start()
+
+
+def notify_paid(gid):
+    """입금 완료된 게스트 알림: 이름 · 나이대 · 성별 · 급수"""
+    with db() as con:
+        g = con.execute('SELECT name, age, gender, level FROM guest WHERE id=?', (gid,)).fetchone()
+    if g:
+        push_all('🏸 게스트 신청 완료', f"{g['name']} · {g['age']} · {g['gender']} · {g['level']}")
+
+
+def push_key(h, q, d):
+    if not PUSH_OK: raise ApiError('서버에 알림 기능이 아직 설치되지 않았어요', 503)
+    h.json({'key': vapid_public()})
+
+
+def push_subscribe(h, q, d):
+    if not PUSH_OK: raise ApiError('서버에 알림 기능이 아직 설치되지 않았어요', 503)
+    sub = d.get('sub') or {}
+    ep, keys = str(sub.get('endpoint') or ''), sub.get('keys') or {}
+    if not ep.startswith(('https://', 'http://127.0.0.1')) or not keys.get('p256dh') or not keys.get('auth'):
+        raise ApiError('알림 등록 정보가 맞지 않아요')
+    host = h.headers.get('X-Forwarded-Host') or h.headers.get('Host') or ''
+    with db() as con:
+        con.execute('INSERT OR REPLACE INTO push_sub(endpoint,p256dh,auth,admin_id,created_at) VALUES (?,?,?,?,?)',
+                    (ep, keys['p256dh'], keys['auth'], h.session()['id'], now()))
+        if host and not host.startswith(('127.', 'localhost')):
+            con.execute("INSERT OR REPLACE INTO setting(key,value) VALUES ('push_origin', ?)", ('https://' + host,))
+    h.json({'ok': True})
+
+
+def push_unsubscribe(h, q, d):
+    with db() as con:
+        con.execute('DELETE FROM push_sub WHERE endpoint=?', (str(d.get('endpoint') or ''),))
     h.json({'ok': True})
 
 
@@ -561,6 +658,7 @@ def users_delete(h, q, d):
     uid = clean(d.get('id'), 20)
     with db() as con:
         n = con.execute('DELETE FROM admin_user WHERE id=?', (uid,)).rowcount
+        if n: con.execute('DELETE FROM push_sub WHERE lower(admin_id)=lower(?)', (uid,))   # 삭제된 관리자 폰 알림도 끊음
     if not n: raise ApiError('없는 아이디예요', 404)
     drop_sessions(uid)
     h.json({'ok': True})
@@ -588,8 +686,11 @@ def admin_guests(h, q, d):
 def admin_mark(h, q, d):
     paid = bool(d.get('paid'))
     with db() as con:
+        was = con.execute('SELECT status FROM guest WHERE id=?', (d.get('id'),)).fetchone()
         con.execute('UPDATE guest SET status=?, paid_at=? WHERE id=?',
                     ('신청완료' if paid else '입금대기', now() if paid else None, d.get('id')))
+    if paid and was and was['status'] == '입금대기':
+        notify_paid(d.get('id'))
     h.json({'ok': True})
 
 
@@ -675,6 +776,9 @@ ROUTES = {
     ('GET', '/api/admin/users'): users_list,
     ('POST', '/api/admin/users/add'): users_add,
     ('POST', '/api/admin/deposits/delete'): admin_deposit_delete,
+    ('GET', '/api/admin/push/key'): push_key,
+    ('POST', '/api/admin/push/subscribe'): push_subscribe,
+    ('POST', '/api/admin/push/unsubscribe'): push_unsubscribe,
     ('POST', '/api/admin/users/reset'): users_reset,
     ('POST', '/api/admin/users/delete'): users_delete,
     ('POST', '/api/hook/deposit'): hook_deposit,
