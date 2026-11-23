@@ -83,6 +83,17 @@ def init_db():
         ''')
         for k, v in DEFAULT_SETTINGS.items():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
+        # 한 번만: 주말 휴무 전(2026-11-23 이전)에 주말 날짜로 들어온 신청 → 다음 월요일 명단으로 옮김
+        if not con.execute("SELECT 1 FROM setting WHERE key='weekend_moved'").fetchone():
+            for r in con.execute("SELECT id, meet_date, pay_name FROM guest WHERE meet_date < '2026-11-23'"
+                                 " AND strftime('%w', meet_date) IN ('0','6')").fetchall():
+                d = datetime.strptime(r['meet_date'], '%Y-%m-%d')
+                mon = (d + timedelta(days=7 - d.weekday())).strftime('%Y-%m-%d')
+                pay, i = r['pay_name'], 2
+                while con.execute('SELECT 1 FROM guest WHERE meet_date=? AND pay_name=? AND id<>?', (mon, pay, r['id'])).fetchone():
+                    pay = f"{r['pay_name']}{i}"; i += 1
+                con.execute('UPDATE guest SET meet_date=?, pay_name=? WHERE id=?', (mon, pay, r['id']))
+            con.execute("INSERT INTO setting(key, value) VALUES ('weekend_moved', ?)", (now(),))
 
 
 def settings():
@@ -93,6 +104,8 @@ def settings():
     fixed = s.get('meet_date') or ''
     s['meet_date_fixed'] = fixed if fixed >= today() else ''
     s['meet_date'] = s['meet_date_fixed'] or today()
+    # 주말(토·일)은 기본 휴무. 관리자가 그 날짜를 직접 지정하면 열림 (사용자 결정 2026-11-23)
+    s['closed'] = not s['meet_date_fixed'] and datetime.now(KST).weekday() >= 5
     return s
 
 
@@ -328,7 +341,7 @@ class H(SimpleHTTPRequestHandler):
 # ── 게스트 API ─────────────────────────────────────
 def public_info(h, q, d):
     s = settings()
-    h.json({'settings': {k: s[k] for k in SETTING_KEYS}, 'counts': counts(s['meet_date'])})
+    h.json({'settings': {k: s[k] for k in SETTING_KEYS}, 'counts': counts(s['meet_date']), 'closed': s['closed']})
 
 
 def mask_name(n):
@@ -355,6 +368,7 @@ def apply(h, q, d):
     if gender not in ('남', '여'): raise ApiError('성별을 골라주세요')
     if level not in ('A', 'B', 'C', 'D', '초심'): raise ApiError('급수를 골라주세요')
     s = settings()
+    if s['closed']: raise ApiError('주말에는 운동이 없어요. 평일(월~금)에 신청해주세요')
     if not s['account_no']: raise ApiError('아직 입금 계좌가 설정되지 않았어요. 총무에게 알려주세요')
     with LOCK, db() as con:
         # 같은 날 이름만 같아도 막음 (다른 브라우저로 다시 신청하는 것 방지, 사용자 결정 2026-11-18)

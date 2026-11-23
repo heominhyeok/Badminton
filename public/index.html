@@ -189,6 +189,7 @@
   .dep .time span{font-size:11px;color:var(--sub)}
   .dep .amt{font-size:15px;font-weight:700;flex:none}
   .item .who .tag-ok,.item .who .tag-no{display:inline-block;width:auto;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin:3px 0 0;white-space:nowrap}
+  .item .who .paid-at{display:block;font-size:12px;font-weight:700;color:var(--green)}
   .item .who .tag-ok{color:var(--green);background:var(--green-soft)}
   .item .who .tag-no{color:var(--coral);background:var(--coral-soft)}
   .dep .who b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -290,6 +291,14 @@
       </div>
     </form>
     <div class="cta-wrap" id="applyCta"><button class="cta" id="applyBtn" type="button">신청하고 계좌 받기</button></div>
+
+    <!-- 주말(휴무)에는 신청 입력 대신 이 안내만 -->
+    <div id="closedBox" class="hidden">
+      <div class="done">
+        <h2>주말에는 운동이 없어요</h2>
+        <p>평일(월~금)에 신청해주세요</p>
+      </div>
+    </div>
 
     <!-- 신청 완료되면 신청 입력 대신 이 안내만 -->
     <div id="doneBox" class="hidden">
@@ -611,7 +620,10 @@ function renderPublic(data){
   $("meetPlaceWrap").classList.toggle("hidden", !S.meet_place);
   $("countApply").textContent = c.confirmed;
   const left = Math.max(Number(S.max_guests) - c.confirmed - c.pending, 0);
-  $("seatText").textContent = left ? `${left}자리 남음` : "마감";
+  $("seatText").textContent = data.closed ? "휴무" : left ? `${left}자리 남음` : "마감";
+  const done = !$("doneBox").classList.contains("hidden");   // 신청 완료 화면이면 입력칸 그대로 숨김
+  ["applyForm", "applyCta"].forEach(id => $(id).classList.toggle("hidden", done || !!data.closed));
+  $("closedBox").classList.toggle("hidden", !data.closed);
   document.querySelectorAll(".fee").forEach(el => el.textContent = won(S.fee));
   $("acctText").textContent = S.account_no ? `${S.bank_name} ${prettyAcct(S.account_no)} ${S.holder}` : "계좌 미설정";
 }
@@ -900,11 +912,14 @@ async function loadGuests(){
       ul.innerHTML = `<li class="empty"><div><b>${L.filter ? "해당하는 게스트가 없어요" : "아직 신청한 게스트가 없어요"}</b>신청이 들어오면 여기에 바로 보여요</div></li>`;
       return;
     }
+    // 날짜가 운동일과 다르면(주말 신청을 월요일로 옮긴 경우 등) 월/일까지 표시
+    const mdhm = s => `${+s.slice(5,7)}/${+s.slice(8,10)} ${s.slice(11,16)}`;
+    const when = (s, day) => s.slice(0,10) === day ? s.slice(11,16) : mdhm(s);
     ul.innerHTML = r.guests.map(g => `
       <li class="item">
         <span class="ava ${g.gender === "남" ? "m" : "f"}">${esc(g.name.slice(0,1))}</span>
         <span class="who"><b>${esc(g.name)}</b>${g.pay_name !== g.name ? `<em>입금자명 ${esc(g.pay_name)}</em>` : ""}
-          <span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${g.created_at.slice(11,16)} 신청</span></span>
+          <span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${when(g.created_at, r.date)} 신청${g.paid_at ? `<b class="paid-at">${mdhm(g.paid_at)} 입금</b>` : ""}</span></span>
         <span class="act">
           ${g.status === "신청완료"
             ? `<button class="btn-sm ok" data-undo="${g.id}" title="누르면 입금대기로 되돌려요">입금완료</button>`
