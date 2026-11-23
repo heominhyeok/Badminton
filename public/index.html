@@ -168,6 +168,33 @@
   .filters{display:flex;gap:6px;margin:2px 0 6px;flex:none}
   .filters button{border:0;background:none;padding:6px 10px;border-radius:999px;font-size:13px;font-weight:600;color:var(--sub)}
   .filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+  .filters .add-btn{margin-left:auto;color:var(--ink);background:var(--field)}
+  .mform{display:flex;flex-direction:column;gap:8px}
+  .mrow{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .mrow span{font-size:12px;color:var(--sub);margin-left:2px}
+  .sheet-close.danger{color:var(--coral);font-weight:600}
+  .cal{background:var(--field);border-radius:14px;padding:10px 8px 8px;flex:none}
+  .cal-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 6px}
+  .cal-head b{font-size:15px}
+  .cal-head button{border:0;background:none;font-size:20px;width:36px;height:32px;color:var(--ink)}
+  .cal-head button:disabled{opacity:.25}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+  .cal-wk span{text-align:center;font-size:11px;color:var(--sub);padding:2px 0 4px}
+  .cal-wk .sun{color:var(--coral)}
+  .cal-day{position:relative;border:0;background:none;height:38px;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink);padding:0}
+  .cal-day.wk::after{content:"";position:absolute;left:50%;bottom:4px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--sub)}
+  .cal-day.ex{background:var(--yellow);color:var(--on-yellow)}
+  .cal-day.off{color:var(--faint);font-weight:500}
+  .cal-day.today{box-shadow:inset 0 0 0 2px var(--ink)}
+  .cal-day:disabled{opacity:.35}
+  .cal-legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:var(--sub);padding-top:6px}
+  .cal-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+  .lg-wk{background:var(--sub)}
+  .lg-ex{background:var(--yellow)}
+  .lg-off{background:var(--faint)}
+  .mfee{display:flex;align-items:center;gap:8px;background:var(--field);border-radius:12px;padding:0 15px}
+  .mfee span{font-size:14px;color:var(--sub);flex:none}
+  .field .mfee input{flex:1;min-width:0;padding:14px 0;background:none;text-align:right;outline:0}
 
   .list{list-style:none;flex:1;min-height:0;overflow:hidden}
   .item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
@@ -220,6 +247,8 @@
   .form select,.form input{flex:none;height:auto}
   .form .lbl{font-size:12px;color:var(--sub);margin:4px 0 -2px 2px}
   .form .hint{font-size:12px;color:var(--sub);margin:2px 2px 0}
+  #setMeet{overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:12px}
+  #setMeet > *{flex:none}
 
   .sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;z-index:8;animation:fade .2s both}
   .sheet{width:100%;max-width:420px;background:var(--bg);border-radius:20px 20px 0 0;padding:22px 20px calc(14px + env(safe-area-inset-bottom));animation:up .25s cubic-bezier(.2,.9,.3,1) both}
@@ -410,6 +439,7 @@
         <button type="button" aria-pressed="true" data-f="">전체</button>
         <button type="button" aria-pressed="false" data-f="입금대기">입금대기</button>
         <button type="button" aria-pressed="false" data-f="신청완료">입금완료</button>
+        <button type="button" class="add-btn" id="addManual">+ 수기 입력</button>
       </div>
       <ul class="list" id="gList"></ul>
       <div class="pager"><button type="button" id="gPrev" aria-label="이전 페이지">‹</button><span class="num" id="gPage">1 / 1</span><button type="button" id="gNext" aria-label="다음 페이지">›</button></div>
@@ -467,12 +497,14 @@
       </div>
       <form class="form field" id="setMeet" novalidate>
         <p class="lbl">운동 날짜</p>
-        <div class="chips" role="radiogroup" aria-label="운동 날짜 방식">
-          <input type="radio" name="date_mode" id="dmAuto" value="auto" checked><label for="dmAuto">매일 자동 (오늘)</label>
-          <input type="radio" name="date_mode" id="dmFix" value="fixed"><label for="dmFix">날짜 지정</label>
+        <div class="cal" id="cal">
+          <div class="cal-head"><button type="button" id="calPrev" aria-label="이전 달">‹</button><b id="calTitle"></b><button type="button" id="calNext" aria-label="다음 달">›</button></div>
+          <div class="cal-grid cal-wk"><span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+          <div class="cal-grid" id="calDays"></div>
+          <div class="cal-legend"><span><i class="lg-wk"></i>평일 운동</span><span><i class="lg-ex"></i>따로 연 날</span><span><i class="lg-off"></i>쉬는 날</span></div>
         </div>
-        <input type="date" name="meet_date" class="hidden" id="meetDateInput">
-        <p class="hint" id="dateHint">자정이 지나면 그날이 운동 날짜가 돼요</p>
+        <p class="hint">평일은 자동으로 열려요. 주말 같은 날은 눌러서 운동 정보를 넣으면 열려요</p>
+        <p class="lbl" style="margin-top:10px">기본 운동 정보 (평일)</p>
         <p class="lbl">모임 이름</p><input name="meet_title" placeholder="정기운동" maxlength="30">
         <div class="grid2">
           <div><p class="lbl">시간</p><input name="meet_time" placeholder="19:00–22:00"></div>
@@ -528,6 +560,57 @@
     <p class="hint" id="gSheetSub" style="font-size:13px;color:var(--sub);margin:-8px 0 8px"></p>
     <ul class="glist" id="gSheetList"></ul>
     <button class="cta" type="button" id="gSheetClose">닫기</button>
+  </div>
+</div>
+
+<!-- 캘린더: 그날 운동 열기 / 정보 바꾸기 -->
+<div class="sheet-bg hidden" id="dSheet">
+  <div class="sheet field" role="dialog" aria-modal="true" aria-labelledby="dSheetTitle">
+    <h3 id="dSheetTitle"></h3>
+    <p class="hint" id="dSheetSub" style="font-size:13px;color:var(--sub);margin:-8px 0 10px"></p>
+    <form id="dForm" class="mform" novalidate>
+      <label class="mrow"><span>모임 이름</span><input name="title" maxlength="30" placeholder="정기운동"></label>
+      <label class="mrow"><span>시간</span><input name="time" maxlength="30" placeholder="19:00–22:00"></label>
+      <label class="mrow"><span>장소</span><input name="place" maxlength="60" placeholder="OO 체육관"></label>
+      <div class="grid2">
+        <label class="mrow"><span>게스트비(원)</span><input name="fee" inputmode="numeric"></label>
+        <label class="mrow"><span>정원</span><input name="max_guests" inputmode="numeric"></label>
+      </div>
+    </form>
+    <button class="cta" type="button" id="dSave" style="margin-top:12px">저장</button>
+    <button class="sheet-close danger hidden" type="button" id="dDel"></button>
+    <button class="sheet-close" type="button" id="dClose">닫기</button>
+  </div>
+</div>
+
+<!-- 관리자 수기 입력 -->
+<div class="sheet-bg hidden" id="mSheet">
+  <div class="sheet field" role="dialog" aria-modal="true" aria-labelledby="mSheetTitle">
+    <h3 id="mSheetTitle">명단 수기 입력</h3>
+    <p class="hint" id="mSheetSub" style="font-size:13px;color:var(--sub);margin:-8px 0 10px"></p>
+    <form id="mForm" class="mform" novalidate>
+      <input id="mName" maxlength="10" placeholder="이름" aria-label="이름">
+      <select id="mAge" aria-label="나이" required>
+        <option value="" selected disabled>나이대 선택</option>
+        <option>10대</option><option>20대</option><option>30대</option>
+        <option>40대</option><option>50대</option><option>60대</option>
+      </select>
+      <div class="chips" role="radiogroup" aria-label="성별">
+        <input type="radio" name="mGender" id="mgM" value="남"><label for="mgM">남</label>
+        <input type="radio" name="mGender" id="mgF" value="여"><label for="mgF">여</label>
+      </div>
+      <div class="chips" role="radiogroup" aria-label="급수">
+        <input type="radio" name="mLevel" id="mlA" value="A"><label for="mlA">A</label>
+        <input type="radio" name="mLevel" id="mlB" value="B"><label for="mlB">B</label>
+        <input type="radio" name="mLevel" id="mlC" value="C"><label for="mlC">C</label>
+        <input type="radio" name="mLevel" id="mlD" value="D"><label for="mlD">D</label>
+        <input type="radio" name="mLevel" id="mlN" value="초심"><label for="mlN">초심</label>
+      </div>
+      <label class="mfee"><span>금액</span><input id="mFee" inputmode="numeric" aria-label="금액"><span>원</span></label>
+    </form>
+    <p class="hint" style="font-size:12px;color:var(--sub);margin:8px 2px 12px">입금완료로 바로 들어가요</p>
+    <button class="cta" type="button" id="mSave">명단에 추가</button>
+    <button class="sheet-close" type="button" id="mClose">닫기</button>
   </div>
 </div>
 
@@ -918,7 +1001,7 @@ async function loadGuests(){
     ul.innerHTML = r.guests.map(g => `
       <li class="item">
         <span class="ava ${g.gender === "남" ? "m" : "f"}">${esc(g.name.slice(0,1))}</span>
-        <span class="who"><b>${esc(g.name)}</b>${g.pay_name !== g.name ? `<em>입금자명 ${esc(g.pay_name)}</em>` : ""}
+        <span class="who"><b>${esc(g.name)}</b>${g.pay_name !== g.name ? `<em>입금자명 ${esc(g.pay_name)}</em>` : ""}${g.manual ? `<em>수기</em>` : ""}
           <span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${when(g.created_at, r.date)} 신청${g.paid_at ? `<b class="paid-at">${mdhm(g.paid_at)} 입금</b>` : ""}</span></span>
         <span class="act">
           ${g.status === "신청완료"
@@ -953,6 +1036,32 @@ document.querySelectorAll("[data-f]").forEach(b => b.addEventListener("click", (
   document.querySelectorAll("[data-f]").forEach(x => x.setAttribute("aria-pressed", x === b));
   L.filter = b.dataset.f; L.page = 1; loadGuests();
 }));
+
+/* 관리자 수기 입력 */
+function openManual(){
+  $("mForm").reset();
+  $("mFee").value = S.fee || "";
+  $("mSheetSub").textContent = `${fmtDate(L.date)} 명단에 추가`;
+  $("mSheet").classList.remove("hidden");
+}
+$("addManual").addEventListener("click", openManual);
+$("mSheet").addEventListener("click", e => { if (e.target.id === "mSheet" || e.target.id === "mClose") $("mSheet").classList.add("hidden"); });
+$("mSave").addEventListener("click", async () => {
+  const body = { date: L.date, name: $("mName").value.trim(), age: $("mAge").value,
+                 gender: picked("mGender"), level: picked("mLevel"), fee: $("mFee").value.replace(/[^\d]/g, "") };
+  if (!body.name) return toast("이름을 입력해주세요");
+  if (!body.age) return toast("나이대를 골라주세요");
+  if (!body.gender) return toast("성별을 골라주세요");
+  if (!body.level) return toast("급수를 골라주세요");
+  if (body.fee === "") return toast("금액을 입력해주세요");
+  $("mSave").disabled = true;
+  try {
+    await api("/api/admin/add", body);
+    $("mSheet").classList.add("hidden"); toast(`${body.name} 추가했어요`);
+    L.page = 1; loadGuests();
+  } catch (e) { adminFail(e); }
+  finally { $("mSave").disabled = false; }
+});
 
 /* 입금 알림 기록 */
 const DP = { page: 1, date: "" };    // date 비어 있으면 서버가 오늘로
@@ -1148,20 +1257,79 @@ $("uList").addEventListener("click", async e => {
 });
 $("uPrev").addEventListener("click", () => { U.page--; renderUsers(); });
 $("uNext").addEventListener("click", () => { U.page++; renderUsers(); });
-function renderDateMode(){
-  const fixed = $("dmFix").checked;
-  $("meetDateInput").classList.toggle("hidden", !fixed);
-  $("dateHint").textContent = fixed ? "그날이 지나면 다시 매일 자동으로 돌아가요" : "자정이 지나면 그날이 운동 날짜가 돼요";
+/* 운동 캘린더: 평일 = 기본 운동, 따로 연 날(노란색) = 그날 정보, 그 밖은 쉬는 날 */
+const CAL = { month: "", today: "", days: {}, defaults: {} };
+async function loadCal(){
+  try {
+    const r = await api(`/api/admin/days?month=${CAL.month}`);
+    CAL.today = r.today; CAL.days = Object.fromEntries(r.days.map(d => [d.date, d]));
+    renderCal();
+  } catch (e) { adminFail(e); }
 }
-document.querySelectorAll('input[name="date_mode"]').forEach(r => r.addEventListener("change", renderDateMode));
+function renderCal(){
+  const [y, m] = CAL.month.split("-").map(Number);
+  $("calTitle").textContent = `${y}년 ${m}월`;
+  const first = new Date(y, m - 1, 1).getDay(), last = new Date(y, m, 0).getDate();
+  let html = "<span></span>".repeat(first);
+  for (let d = 1; d <= last; d++) {
+    const ds = `${CAL.month}-${String(d).padStart(2, "0")}`, dow = (first + d - 1) % 7;
+    const cls = CAL.days[ds] ? "ex" : (dow === 0 || dow === 6) ? "off" : "wk";
+    html += `<button type="button" class="cal-day ${cls}${ds === CAL.today ? " today" : ""}" data-day="${ds}" ${ds < CAL.today ? "disabled" : ""}>${d}</button>`;
+  }
+  $("calDays").innerHTML = html;
+  const [ty, tm] = CAL.today.split("-").map(Number);
+  $("calPrev").disabled = y * 12 + m <= ty * 12 + tm;
+}
+const monthAdd = (mo, n) => { const [y, m] = mo.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+$("calPrev").addEventListener("click", () => { CAL.month = monthAdd(CAL.month, -1); loadCal(); });
+$("calNext").addEventListener("click", () => { CAL.month = monthAdd(CAL.month, 1); loadCal(); });
+$("calDays").addEventListener("click", e => {
+  const b = e.target.closest("[data-day]"); if (!b || b.disabled) return;
+  const ds = b.dataset.day, day = CAL.days[ds], f = $("dForm").elements, D = CAL.defaults;
+  const dow = new Date(ds + "T00:00:00").getDay(), weekday = dow > 0 && dow < 6;
+  const v = day || { title: D.meet_title, time: D.meet_time, place: D.meet_place, fee: D.fee, max_guests: D.max_guests };
+  for (const k of ["title", "time", "place", "fee", "max_guests"]) f[k].value = v[k] || "";
+  $("dSheet").dataset.day = ds;
+  $("dSheetTitle").textContent = fmtDate(ds);
+  $("dSheetSub").textContent = day ? "따로 정보를 넣은 운동일이에요"
+    : weekday ? "평일 기본 운동이에요. 이 날만 정보를 바꿀 수 있어요" : "쉬는 날이에요. 운동 정보를 넣고 저장하면 열려요";
+  $("dSave").textContent = day || weekday ? "저장" : "이 날 운동 열기";
+  $("dDel").textContent = weekday ? "기본 정보로 되돌리기" : "이 날 운동 닫기";
+  $("dDel").classList.remove("arm");
+  $("dDel").classList.toggle("hidden", !day);
+  $("dSheet").classList.remove("hidden");
+});
+$("dSheet").addEventListener("click", e => { if (e.target.id === "dSheet" || e.target.id === "dClose") $("dSheet").classList.add("hidden"); });
+$("dSave").addEventListener("click", async () => {
+  const f = $("dForm").elements, body = { date: $("dSheet").dataset.day };
+  for (const k of ["title", "time", "place", "fee", "max_guests"]) body[k] = f[k].value.trim();
+  try {
+    await api("/api/admin/days/save", body);
+    $("dSheet").classList.add("hidden"); toast(`${fmtDate(body.date)} 저장했어요`);
+    loadCal(); loadPublic();
+  } catch (e) { adminFail(e); }
+});
+$("dDel").addEventListener("click", async () => {
+  const b = $("dDel");
+  if (!b.classList.contains("arm")) {
+    b.classList.add("arm"); b.dataset.t = b.textContent; b.textContent = "한 번 더 누르면 적용돼요";
+    setTimeout(() => { if (b.classList.contains("arm")) { b.classList.remove("arm"); b.textContent = b.dataset.t; } }, 2500);
+    return;
+  }
+  b.classList.remove("arm");
+  try {
+    await api("/api/admin/days/delete", { date: $("dSheet").dataset.day });
+    $("dSheet").classList.add("hidden"); toast("적용했어요");
+    loadCal(); loadPublic();
+  } catch (e) { adminFail(e); }
+});
 async function loadSettings(){
   try {
     const s = await api("/api/admin/settings");
     for (const f of ["setMeet","setBank"]) for (const el of $(f).elements) if (el.name in s && el.type !== "radio") el.value = s[el.name];
-    $("meetDateInput").min = s.today;
-    (s.meet_date ? $("dmFix") : $("dmAuto")).checked = true;
-    if (!s.meet_date) $("meetDateInput").value = s.today;
-    renderDateMode();
+    CAL.defaults = s;
+    if (!CAL.month) CAL.month = s.today.slice(0, 7);
+    loadCal();
   } catch (e) { adminFail(e); }
 }
 $("saveBtn").addEventListener("click", async () => {
@@ -1176,11 +1344,8 @@ $("saveBtn").addEventListener("click", async () => {
     }
     const body = {};
     for (const el of $(setForm).elements) if (el.name && el.type !== "radio") body[el.name] = el.value;
-    if (setForm === "setMeet") {
-      if ($("dmAuto").checked) body.meet_date = "";
-      else if (!body.meet_date) return toast("지정할 날짜를 골라주세요");
-    }
     await api("/api/admin/settings", body);
+    if (setForm === "setMeet") Object.assign(CAL.defaults, body);
     await loadPublic();
     toast("저장했어요");
   } catch (e) { adminFail(e); }

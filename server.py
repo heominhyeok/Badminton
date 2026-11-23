@@ -75,6 +75,11 @@ def init_db():
             must_change INTEGER NOT NULL DEFAULT 1,  -- 1이면 처음 비밀번호(0000) 상태 → 로그인 후 바로 바꿔야 함
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS meet_day (   -- 평일 말고 따로 연 운동일 (주말 등) + 그날 운동 정보
+            date TEXT PRIMARY KEY,
+            title TEXT NOT NULL, time TEXT NOT NULL, place TEXT NOT NULL,
+            fee TEXT NOT NULL, max_guests TEXT NOT NULL, created_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS push_sub (   -- 관리자 폰 알림 주소 (로그아웃해도 유지)
             endpoint TEXT PRIMARY KEY,
             p256dh TEXT NOT NULL, auth TEXT NOT NULL,
@@ -83,6 +88,14 @@ def init_db():
         ''')
         for k, v in DEFAULT_SETTINGS.items():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
+        # 예전 '날짜 지정'(하루만 지정) → 캘린더에서 연 날로 옮기고 지정 값은 비움
+        old = con.execute("SELECT value FROM setting WHERE key='meet_date'").fetchone()
+        if old and old['value']:
+            if old['value'] >= today():
+                d = {r['key']: r['value'] for r in con.execute('SELECT key, value FROM setting')}
+                con.execute('INSERT OR IGNORE INTO meet_day VALUES (?,?,?,?,?,?,?)',
+                            (old['value'], d['meet_title'], d['meet_time'], d['meet_place'], d['fee'], d['max_guests'], now()))
+            con.execute("UPDATE setting SET value='' WHERE key='meet_date'")
         # 한 번만: 주말 휴무 전(2026-11-23 이전)에 주말 날짜로 들어온 신청 → 다음 월요일 명단으로 옮김
         if not con.execute("SELECT 1 FROM setting WHERE key='weekend_moved'").fetchone():
             for r in con.execute("SELECT id, meet_date, pay_name FROM guest WHERE meet_date < '2026-11-23'"
@@ -96,16 +109,19 @@ def init_db():
             con.execute("INSERT INTO setting(key, value) VALUES ('weekend_moved', ?)", (now(),))
 
 
-def settings():
+def settings(defaults=False):
+    """운동 정보. 운동일은 항상 오늘(한국시간 자정에 바뀜).
+    평일(월~금)은 기본 정보로 열림, 주말 등은 캘린더에서 연 날(meet_day)만 열림 (사용자 결정 2026-11-24).
+    연 날은 그날 정보(이름·시간·장소·게스트비·정원)로 덮어씀. defaults=True 면 기본값 그대로."""
     with db() as con:
         s = {r['key']: r['value'] for r in con.execute('SELECT key, value FROM setting')}
-    # 운동 날짜: 비어 있으면 매일 자동으로 오늘(한국시간 자정에 바뀜).
-    # 지정한 날짜가 지나가면 다시 오늘로 돌아감
-    fixed = s.get('meet_date') or ''
-    s['meet_date_fixed'] = fixed if fixed >= today() else ''
-    s['meet_date'] = s['meet_date_fixed'] or today()
-    # 주말(토·일)은 기본 휴무. 관리자가 그 날짜를 직접 지정하면 열림 (사용자 결정 2026-11-23)
-    s['closed'] = not s['meet_date_fixed'] and datetime.now(KST).weekday() >= 5
+        day = con.execute('SELECT * FROM meet_day WHERE date=?', (today(),)).fetchone()
+    s['meet_date'] = today()
+    if defaults: return s
+    if day:
+        s.update(meet_title=day['title'], meet_time=day['time'], meet_place=day['place'],
+                 fee=day['fee'], max_guests=day['max_guests'])
+    s['closed'] = not day and datetime.now(KST).weekday() >= 5
     return s
 
 
@@ -691,10 +707,36 @@ def admin_guests(h, q, d):
         pages = max(1, -(-total // size)); page = min(page, pages)
         # 입금대기를 먼저, 그다음 신청 순서
         rows = [dict(r) for r in con.execute(
-            f'''SELECT id,name,phone4,age,gender,level,pay_name,fee,status,created_at,paid_at FROM guest WHERE {where}
+            f'''SELECT id,name,phone4,age,gender,level,pay_name,fee,status,created_at,paid_at,token LIKE 'manual-%' manual FROM guest WHERE {where}
                 ORDER BY CASE status WHEN '입금대기' THEN 0 ELSE 1 END, id LIMIT ? OFFSET ?''', args + [size, (page - 1) * size])]
         paid_sum = con.execute("SELECT COALESCE(SUM(fee),0) FROM guest WHERE meet_date=? AND status='신청완료'", (date,)).fetchone()[0]
     h.json({'date': date, 'guests': rows, 'counts': counts(date), 'paid_sum': paid_sum, 'page': page, 'pages': pages, 'total': total})
+
+
+def admin_add(h, q, d):
+    """관리자 수기 입력: 바로 입금완료로 명단에 추가 (자리 수 제한·주말 휴무와 상관없이)"""
+    date = clean(d.get('date'), 10)
+    name = clean(d.get('name'), 10)
+    age, gender, level = clean(d.get('age')), clean(d.get('gender')), clean(d.get('level'))
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜가 잘못됐어요')
+    if not name: raise ApiError('이름을 입력해주세요')
+    if age not in ('10대', '20대', '30대', '40대', '50대', '60대'): raise ApiError('나이대를 골라주세요')
+    if gender not in ('남', '여'): raise ApiError('성별을 골라주세요')
+    if level not in ('A', 'B', 'C', 'D', '초심'): raise ApiError('급수를 골라주세요')
+    try: fee = int(str(d.get('fee', '')).replace(',', ''))
+    except ValueError: raise ApiError('금액을 숫자로 입력해주세요')
+    if not 0 <= fee <= 1000000: raise ApiError('금액이 너무 커요')
+    with LOCK, db() as con:
+        if con.execute("SELECT 1 FROM guest WHERE meet_date=? AND REPLACE(name,' ','')=?",
+                       (date, name.replace(' ', ''))).fetchone():
+            raise ApiError('이미 같은 이름이 이 날 명단에 있어요', 409)
+        pay_name, n = name, 1
+        while con.execute('SELECT 1 FROM guest WHERE meet_date=? AND pay_name=?', (date, pay_name)).fetchone():
+            n += 1; pay_name = f'{name}{n}'
+        cur = con.execute("INSERT INTO guest(meet_date,name,phone4,age,gender,level,pay_name,fee,status,token,created_at,paid_at)"
+                          " VALUES (?,?,'',?,?,?,?,?,'신청완료',?,?,?)",
+                          (date, name, age, gender, level, pay_name, fee, 'manual-' + secrets.token_urlsafe(9), now(), now()))
+    h.json({'ok': True, 'id': cur.lastrowid})
 
 
 def admin_mark(h, q, d):
@@ -732,24 +774,50 @@ def admin_stats(h, q, d):
 
 
 def admin_settings_get(h, q, d):
-    s = settings()
+    s = settings(defaults=True)
     out = {k: s[k] for k in SETTING_KEYS}
-    out['meet_date'] = s['meet_date_fixed']      # '' 이면 매일 자동
     out['today'] = today()
     h.json(out)
 
 
 def admin_settings_save(h, q, d):
-    vals = {k: clean(d.get(k), 300) for k in SETTING_KEYS if k in d}
+    vals = {k: clean(d.get(k), 300) for k in SETTING_KEYS if k in d and k != 'meet_date'}
     if 'account_no' in vals: vals['account_no'] = re.sub(r'\D', '', vals['account_no'])
     if 'fee' in vals and not vals['fee'].isdigit(): raise ApiError('게스트비는 숫자로 입력해주세요')
     if 'max_guests' in vals and not vals['max_guests'].isdigit(): raise ApiError('정원은 숫자로 입력해주세요')
-    if vals.get('meet_date') and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', vals['meet_date']): raise ApiError('날짜 형식이 잘못됐어요')
-    if vals.get('meet_date') and vals['meet_date'] < today(): raise ApiError('지난 날짜는 지정할 수 없어요')
     if vals.get('kakao_link') and not vals['kakao_link'].startswith('https://'): raise ApiError('카카오페이 링크는 https:// 로 시작해야 해요')
     with db() as con:
         for k, v in vals.items():
             con.execute('UPDATE setting SET value=? WHERE key=?', (v, k))
+    h.json({'ok': True})
+
+
+def admin_days(h, q, d):
+    """캘린더: 그 달에 따로 연 날 목록"""
+    month = q.get('month') or today()[:7]
+    if not re.fullmatch(r'\d{4}-\d{2}', month): raise ApiError('달 형식이 잘못됐어요')
+    with db() as con:
+        rows = [dict(r) for r in con.execute('SELECT date,title,time,place,fee,max_guests FROM meet_day WHERE substr(date,1,7)=? ORDER BY date', (month,))]
+    h.json({'month': month, 'today': today(), 'days': rows})
+
+
+def admin_day_save(h, q, d):
+    date = clean(d.get('date'), 10)
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜가 잘못됐어요')
+    if date < today(): raise ApiError('지난 날짜는 열 수 없어요')
+    title, time_, place = clean(d.get('title'), 30), clean(d.get('time'), 30), clean(d.get('place'), 60)
+    fee, mx = clean(d.get('fee')).replace(',', ''), clean(d.get('max_guests'))
+    if not title: raise ApiError('모임 이름을 입력해주세요')
+    if not fee.isdigit(): raise ApiError('게스트비는 숫자로 입력해주세요')
+    if not mx.isdigit(): raise ApiError('정원은 숫자로 입력해주세요')
+    with db() as con:
+        con.execute('INSERT OR REPLACE INTO meet_day VALUES (?,?,?,?,?,?,?)', (date, title, time_, place, fee, mx, now()))
+    h.json({'ok': True})
+
+
+def admin_day_delete(h, q, d):
+    with db() as con:
+        con.execute('DELETE FROM meet_day WHERE date=?', (clean(d.get('date'), 10),))
     h.json({'ok': True})
 
 
@@ -781,9 +849,13 @@ ROUTES = {
     ('POST', '/api/admin/logout'): admin_logout,
     ('GET', '/api/admin/guests'): admin_guests,
     ('POST', '/api/admin/mark'): admin_mark,
+    ('POST', '/api/admin/add'): admin_add,
+    ('POST', '/api/admin/days/save'): admin_day_save,
+    ('POST', '/api/admin/days/delete'): admin_day_delete,
     ('POST', '/api/admin/delete'): admin_delete,
     ('GET', '/api/admin/stats'): admin_stats,
     ('GET', '/api/admin/settings'): admin_settings_get,
+    ('GET', '/api/admin/days'): admin_days,
     ('POST', '/api/admin/settings'): admin_settings_save,
     ('POST', '/api/admin/password'): admin_password,
     ('GET', '/api/admin/deposits'): admin_deposits,
