@@ -955,7 +955,7 @@
 <div class="sheet-bg hidden" id="bkSheet">
   <div class="sheet field" role="dialog" aria-modal="true" aria-labelledby="bkTitle">
     <h3 id="bkTitle">내역 추가</h3>
-    <p class="sheet-sub hidden" id="bkBankHint">출금 알림으로 들어온 내역이에요. 금액·날짜는 은행 기준이라 항목 이름만 고칠 수 있어요</p>
+    <p class="sheet-sub hidden" id="bkBankHint">은행 알림으로 들어온 내역이에요. 금액·날짜는 은행 기준이라 항목 이름만 고칠 수 있어요</p>
     <div class="mform">
       <div class="chips" role="radiogroup" aria-label="수입 지출">
         <input type="radio" name="bkKind" id="bkKIn" value="수입"><label for="bkKIn">수입</label>
@@ -2067,7 +2067,7 @@ async function loadBook(){
     $("bkMonth").textContent = `${+r.date.slice(5, 7)}월 전체  수입 ${won(r.month_in)} · 지출 ${won(r.month_out)}`;
     $("bkList").innerHTML = r.items.length ? r.items.map(x => `<li class="item" data-bk="${x.id}">
         <span class="kd ${x.kind === "수입" ? "in" : "out"}">${x.kind}</span>
-        <span class="who"><b>${esc(x.title)}</b><span>${x.src === "bank" ? `출금 알림 · ${x.at.slice(11, 16)}` : "직접 적음"}</span></span>
+        <span class="who"><b>${esc(x.title)}</b><span>${x.src === "bank" ? `${x.kind === "수입" ? "입금" : "출금"} 알림 · ${x.at.slice(11, 16)}` : "직접 적음"}</span></span>
         <span class="amt num ${x.kind === "수입" ? "in" : "out"}">${x.kind === "수입" ? "+" : "−"}${won(x.amount)}</span>
       </li>`).join("") : `<li class="empty"><div><b>이날 적은 내역이 없어요</b>아래 버튼으로 수입·지출을 적어요</div></li>`;
   } catch (e) { adminFail(e); }

@@ -116,6 +116,14 @@ def init_db():
         con.execute('''CREATE TABLE IF NOT EXISTS month_close (   -- 달별 확정 잔액 (그 달 말일 기준, 달이 끝나면 자동으로 넣음)
             ym TEXT PRIMARY KEY, balance INTEGER NOT NULL, at TEXT NOT NULL,
             auto INTEGER NOT NULL DEFAULT 1)''')     # 1 = 자동 계산, 0 = 관리자가 고침
+        if 'dep_id' not in [r[1] for r in con.execute('PRAGMA table_info(ledger)')]:
+            con.execute('ALTER TABLE ledger ADD COLUMN dep_id INTEGER')   # 이자·캐시백 입금 알림에서 온 수입이면 그 입금
+        if not con.execute("SELECT 1 FROM setting WHERE key='interest_moved'").fetchone():
+            for r in con.execute('SELECT id, received_at, sender, amount, raw FROM deposit WHERE amount IS NOT NULL').fetchall():
+                t = bank_income_title(r['sender'])
+                if t: con.execute("INSERT INTO ledger(date, kind, title, amount, src, at, raw, created_at, dep_id) VALUES (?,'수입',?,?,'bank',?,?,?,?)",
+                                  (r['received_at'][:10], t, r['amount'], r['received_at'], r['raw'], r['received_at'], r['id']))
+            con.execute("INSERT INTO setting(key, value) VALUES ('interest_moved', '1')")
         if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='withdrawal'").fetchone():
             con.execute('''INSERT INTO ledger(date, kind, title, amount, src, at, raw, created_at)
                            SELECT substr(received_at,1,10), '지출', COALESCE(receiver,'출금'), amount, 'bank', received_at, raw, received_at FROM withdrawal''')
@@ -506,6 +514,25 @@ def parse_deposit(text):
     return sender, amount, balance, acct
 
 
+def bank_income_title(sender):
+    """보낸 사람 표시가 이자·캐시백이면 장부 항목 이름 ('이자' / '캐시백'), 아니면 None
+    이름에 '이자'가 들어간 사람(이자영 등)은 빼려고 '이자'로 끝나는 짧은 표시만 봄 (예금이자, 결산이자)"""
+    t = re.sub(r'\s', '', str(sender or ''))
+    if '캐시백' in t: return '캐시백'
+    if t.endswith('이자') and len(t) <= 6 or re.fullmatch(r'(예금|결산|세모으기|저금통)?이자(입금|지급)?', t): return '이자'
+    return None
+
+
+def parse_bank_income(text):
+    """'→ 내 통장' 모양이 아닌 이자·캐시백 알림 (예: '이자 375원 입금') → (항목, 금액) 또는 None"""
+    t = ' '.join(str(text).split())
+    kind = '캐시백' if '캐시백' in t else '이자' if re.search(r'(예금|결산)?이자\s*(입금|지급|[\d,]+\s*원)', t) else None
+    if not kind: return None
+    amts = [m for m in re.finditer(r'([\d,]+)\s*원', t) if not re.search(r'잔액\s*$', t[:m.start()])]
+    if not amts: return None
+    return kind, int(amts[0].group(1).replace(',', ''))
+
+
 def parse_withdraw(text):
     """카카오뱅크 출금 알림 → (받는 사람, 금액) 또는 None
     예) '출금 50,000원 입출금통장(5128) → 홍길동 잔액 1,234,567원' (내 통장 → 받는 사람)"""
@@ -677,6 +704,18 @@ def hook_deposit(h, q, d):
         hook_log(f'키 틀림 | {raw[:200]}')
         raise ApiError('키가 맞지 않아요', 403)
     sender, amount, balance, acct = parse_deposit(raw)
+    if sender is None:
+        bi = parse_bank_income(raw)
+        if bi:
+            sender, amount, balance, acct = bi[0], bi[1], None, None
+    if sender is not None and bank_income_title(sender) and amount:
+        t = now()
+        with LOCK, db() as con:
+            cur = con.execute('INSERT INTO deposit(received_at, raw, sender, amount) VALUES (?,?,?,?)', (t, raw[:500], sender, amount))
+            con.execute("INSERT INTO ledger(date, kind, title, amount, src, at, raw, created_at, dep_id) VALUES (?,'수입',?,?,'bank',?,?,?,?)",
+                        (t[:10], bank_income_title(sender), amount, t, raw[:500], t, cur.lastrowid))
+        hook_log(f'{bank_income_title(sender)} | 금액={amount} | {raw[:200]}')
+        return h.json({'ok': True, 'result': f'{bank_income_title(sender)} {amount:,}원을 수입으로 기록했어요'})
     if sender is None:
         w = parse_withdraw(raw)
         if w:
@@ -1411,9 +1450,14 @@ def admin_club_report(h, q, d):
     # 통장관리 장부: 수입(수기)은 수입 칸에 한 줄씩, 지출(수기 + 출금 알림)은 지출 칸에
     with db() as con:
         book = [dict(r) for r in con.execute("SELECT date, kind, title, amount, src FROM ledger WHERE substr(date,1,7)=? ORDER BY date, id", (ym,))]
+    auto_in = {}                                        # 이자·캐시백 입금 알림은 그 달 한 줄로 모음
     for b_ in book:
-        if b_['kind'] == '수입':
+        if b_['kind'] == '수입' and b_['src'] == 'bank':
+            auto_in[b_['title']] = auto_in.get(b_['title'], 0) + b_['amount']
+        elif b_['kind'] == '수입':
             lines.append({'kind': 'book', 'date': b_['date'], 'title': b_['title'], 'amount': b_['amount']})
+    for t_, v_ in auto_in.items():
+        lines.append({'kind': 'bank_in', 'title': f'{t_} 입금', 'amount': v_})
     outs = [{'date': b_['date'], 'title': b_['title'], 'amount': b_['amount']} for b_ in book if b_['kind'] == '지출']
     spend = sum(o['amount'] for o in outs)
     # 통장 잔액 기준 (기준 잔액을 맞춘 뒤에만): 전월이월 = 전달 말 잔액, 잔액 = 그 달 말(이번 달이면 지금)
