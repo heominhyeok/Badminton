@@ -111,6 +111,8 @@ def init_db():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
         if 'fee_note' not in [r[1] for r in con.execute('PRAGMA table_info(deposit)')]:
             con.execute('ALTER TABLE deposit ADD COLUMN fee_note TEXT')     # 회비로 처리된 내용 ('홍길동 11월')
+        if 'linked' not in [r[1] for r in con.execute('PRAGMA table_info(deposit)')]:
+            con.execute('ALTER TABLE deposit ADD COLUMN linked INTEGER NOT NULL DEFAULT 0')   # 1 = 관리자가 게스트 명단과 직접 연결
         if 'viewer' not in [r[1] for r in con.execute('PRAGMA table_info(admin_user)')]:
             con.execute('ALTER TABLE admin_user ADD COLUMN viewer INTEGER NOT NULL DEFAULT 0')   # 1 = 보기만
         if 'off' not in [r[1] for r in con.execute('PRAGMA table_info(meet_day)')]:
@@ -550,11 +552,43 @@ def admin_deposits(h, q, d):
         matched = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=? AND (guest_id IS NOT NULL OR fee_note IS NOT NULL)', (date,)).fetchone()[0]
         pages = max(1, -(-total // size)); page = min(page, pages)
         rows = [dict(r) for r in con.execute(
-            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, g.name guest_name, g.status guest_status, g.token LIKE 'manual-%' guest_manual
+            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, d.linked, g.name guest_name, g.status guest_status, g.token LIKE 'manual-%' guest_manual
                FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id WHERE substr(d.received_at,1,10)=?
                ORDER BY d.id DESC LIMIT ? OFFSET ?''',
             (date, size, (page - 1) * size))]
     h.json({'deposits': rows, 'date': date, 'page': page, 'pages': pages, 'total': total, 'matched': matched, 'today': today(), 'club_fee': club_fee()})
+
+
+def admin_link_guests(h, q, d):
+    """입금 ↔ 게스트 명단 연결용: 그날 게스트 전부 (상태 상관없이) + 이미 다른 입금과 연결됐는지"""
+    date = q.get('date') or today()
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜 형식이 맞지 않아요')
+    with db() as con:
+        rows = [dict(r) for r in con.execute(
+            '''SELECT g.id, g.name, g.age, g.gender, g.level, g.pay_name, g.status, g.fee,
+                      EXISTS(SELECT 1 FROM deposit d WHERE d.guest_id=g.id) linked
+               FROM guest g WHERE g.meet_date=? ORDER BY g.id''', (date,))]
+    h.json({'date': date, 'guests': rows})
+
+
+def admin_deposit_link(h, q, d):
+    """입금 알림을 게스트 명단의 한 사람과 직접 연결 (관리자가 고름).
+    입금대기였으면 입금완료로 바꾸고(입금 시각 그대로) 관리자 폰 알림, 이미 입금완료면 연결만"""
+    dep_id, gid = d.get('deposit_id'), d.get('guest_id')
+    with LOCK, db() as con:
+        dep = con.execute('SELECT id, received_at, guest_id, fee_note FROM deposit WHERE id=?', (dep_id,)).fetchone()
+        g = con.execute('SELECT id, name, status FROM guest WHERE id=?', (gid,)).fetchone()
+        if not dep: raise ApiError('입금 알림을 찾을 수 없어요', 404)
+        if not g: raise ApiError('게스트를 찾을 수 없어요', 404)
+        if dep['guest_id'] or dep['fee_note']: raise ApiError('이미 처리된 입금이에요', 409)
+        if con.execute('SELECT 1 FROM deposit WHERE guest_id=?', (gid,)).fetchone():
+            raise ApiError(f"{g['name']}님은 이미 다른 입금과 연결돼 있어요", 409)
+        was_waiting = g['status'] == '입금대기'
+        if was_waiting:
+            con.execute("UPDATE guest SET status='신청완료', paid_at=? WHERE id=?", (dep['received_at'], gid))
+        con.execute('UPDATE deposit SET guest_id=?, linked=1 WHERE id=?', (gid, dep_id))
+    if was_waiting: notify_paid(gid)
+    h.json({'ok': True, 'name': g['name'], 'paid_now': was_waiting})
 
 
 def admin_deposit_search(h, q, d):
@@ -564,7 +598,7 @@ def admin_deposit_search(h, q, d):
     like = '%' + word.replace('\\', '').replace('%', '').replace('_', '') + '%'
     with db() as con:
         rows = [dict(r) for r in con.execute(
-            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, g.name guest_name, g.status guest_status,
+            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, d.linked, g.name guest_name, g.status guest_status,
                       g.token LIKE 'manual-%' guest_manual
                FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id
                WHERE REPLACE(d.sender,' ','') LIKE ? OR REPLACE(COALESCE(d.fee_note,''),' ','') LIKE ? OR REPLACE(COALESCE(g.name,''),' ','') LIKE ?
@@ -1204,6 +1238,8 @@ ROUTES = {
     ('POST', '/api/admin/users/add'): users_add,
     ('POST', '/api/admin/deposits/delete'): admin_deposit_delete,
     ('GET', '/api/admin/deposits/search'): admin_deposit_search,
+    ('GET', '/api/admin/deposits/link_guests'): admin_link_guests,
+    ('POST', '/api/admin/deposits/link'): admin_deposit_link,
     ('GET', '/api/admin/push/key'): push_key,
     ('POST', '/api/admin/push/subscribe'): push_subscribe,
     ('POST', '/api/admin/push/unsubscribe'): push_unsubscribe,

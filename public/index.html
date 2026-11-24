@@ -266,6 +266,12 @@
   .sheet.tall{height:82vh;display:flex;flex-direction:column}
   .ss-list{flex:1;min-height:0;overflow-y:auto}
   .ss-list .dep .time{width:64px}
+  .dep .who .tag-link{display:inline-block;border:0;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin:3px 0 0 4px;color:#fff;background:var(--ink);vertical-align:0}
+  .ls-list{flex:1;min-height:0;overflow-y:auto;margin-top:8px;padding:2px}
+  .cand.done-g{opacity:.45}
+  .cand .st-w{color:var(--coral);background:var(--coral-soft)}
+  .cand .st-p{color:var(--green);background:var(--green-soft)}
+  .cand .st-l{color:var(--sub);background:var(--field)}
   .dep .who .tag-fee{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin:3px 0 0;color:var(--coral);background:var(--coral-soft)}
   .mrow{display:flex;flex-direction:column;gap:4px;min-width:0}
   .mrow span{font-size:12px;color:var(--sub);margin-left:2px}
@@ -867,6 +873,18 @@
     <div class="mdate"><span>연도</span><button type="button" id="xPrev" aria-label="이전 해">‹</button><b id="xYear"></b><button type="button" id="xNext" aria-label="다음 해">›</button></div>
     <button class="cta" type="button" id="xGo" style="margin-top:12px">다운로드</button>
     <button class="sheet-close" type="button" id="xClose">닫기</button>
+  </div>
+</div>
+
+<!-- 입금 알림 ↔ 게스트 명단 연결 -->
+<div class="sheet-bg hidden" id="lSheet">
+  <div class="sheet tall" role="dialog" aria-modal="true" aria-labelledby="lsTitle">
+    <h3 id="lsTitle">게스트 명단과 연결</h3>
+    <p class="sheet-sub" id="lsSub"></p>
+    <div class="mdate"><span>운동 날짜</span><button type="button" id="lsPrev" aria-label="전날">‹</button><b id="lsDate"></b><button type="button" id="lsNext" aria-label="다음날">›</button></div>
+    <div class="cands ls-list" id="lsList"></div>
+    <button class="cta" type="button" id="lsSave" style="margin-top:10px" disabled>게스트를 골라주세요</button>
+    <button class="sheet-close" type="button" id="lsClose">닫기</button>
   </div>
 </div>
 
@@ -1695,11 +1713,56 @@ const DP = { page: 1, date: "" };    // date 비어 있으면 서버가 오늘�
 let DEPS = {};
 // 입금 한 줄의 처리 상태 표시 (목록·검색 공통)
 function depTag(x){
-  return x.guest_id ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} ${x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
+  return x.guest_id ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} ${x.linked ? "매칭확인" : x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
     : x.fee_note ? `<span class="tag-ok">회비 · ${esc(x.fee_note)}</span>`
     : x.amount >= DP.clubFee ? `<span class="tag-fee">미정 · 눌러서 회비 처리</span>`
     : `<span class="tag-add">+ 눌러서 명단 추가</span>`;
 }
+// 처리 안 된 입금 옆 '명단 연결' 버튼 (게스트 명단의 한 사람과 직접 연결)
+const linkBtn = x => x.guest_id || x.fee_note ? "" : `<button type="button" class="tag-link ed" data-link="${x.id}">명단 연결</button>`;
+/* 입금 ↔ 게스트 명단 연결: 이름을 골라 연결 → '홍길동 매칭확인', 입금대기였으면 입금완료로 */
+const LS = { dep: null, date: "", guests: [], pick: null };
+function openLink(x){
+  if (!x || ME?.viewer) return;
+  Object.assign(LS, { dep: x, date: x.received_at.slice(0, 10), pick: null });
+  $("lsSub").textContent = `입금 ${+x.received_at.slice(5, 7)}/${+x.received_at.slice(8, 10)} ${x.received_at.slice(11, 16)} · ${x.sender || "-"} ${x.amount == null ? "" : won(x.amount)}`;
+  $("lSheet").classList.remove("hidden"); loadLink();
+}
+async function loadLink(){
+  $("lsDate").textContent = shortDate(LS.date);
+  try { LS.guests = (await api(`/api/admin/deposits/link_guests?date=${LS.date}`)).guests; renderLink(); }
+  catch (e) { adminFail(e); }
+}
+function renderLink(){
+  const s = (LS.dep.sender || "").replace(/\s+/g, "");
+  // 입금자 표시에 이름이 들어 있는 게스트를 맨 위로
+  const hit = g => s.includes(g.name.replace(/\s+/g, "")) || s.includes((g.pay_name || "").replace(/\s+/g, ""));
+  const list = [...LS.guests].sort((a, b) => hit(b) - hit(a));
+  $("lsList").innerHTML = list.length ? list.map(g => {
+    const st = g.linked ? ["st-l", "다른 입금과 연결됨"] : g.status === "신청완료" ? ["st-p", "입금완료"] : ["st-w", "입금대기"];
+    return `<button type="button" class="cand${LS.pick === g.id ? " on" : ""}${g.linked ? " done-g" : ""}" data-lg="${g.id}"${g.linked ? " disabled" : ""}>
+      <span class="ck" aria-hidden="true"></span>
+      <span class="cn"><b>${esc(g.name)}${hit(g) ? ' <i class="role">이름 일치</i>' : ""}</b><span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${won(g.fee)}</span></span>
+      <span class="how ${st[0]}">${st[1]}</span></button>`;
+  }).join("") : `<p class="sheet-sub" style="margin:20px 2px">이 날 게스트 명단이 없어요. 날짜를 바꿔보세요</p>`;
+  const g = LS.guests.find(x => x.id === LS.pick);
+  $("lsSave").disabled = !g;
+  $("lsSave").textContent = !g ? "게스트를 골라주세요" : g.status === "신청완료" ? `${g.name} 님과 연결 (이미 입금완료)` : `${g.name} 님과 연결하고 입금완료`;
+}
+$("lsList").addEventListener("click", e => { const b = e.target.closest("[data-lg]"); if (b && !b.disabled) { LS.pick = +b.dataset.lg; renderLink(); } });
+$("lsPrev").addEventListener("click", () => { LS.date = addDays(LS.date, -1); LS.pick = null; loadLink(); });
+$("lsNext").addEventListener("click", () => { LS.date = addDays(LS.date, 1); LS.pick = null; loadLink(); });
+$("lSheet").addEventListener("click", e => { if (e.target.id === "lSheet") $("lSheet").classList.add("hidden"); });
+$("lsClose").addEventListener("click", () => $("lSheet").classList.add("hidden"));
+$("lsSave").addEventListener("click", async () => {
+  $("lsSave").disabled = true;
+  try {
+    const r = await api("/api/admin/deposits/link", { deposit_id: LS.dep.id, guest_id: LS.pick });
+    $("lSheet").classList.add("hidden");
+    toast(r.paid_now ? `${r.name} 매칭확인 · 입금완료로 바꿨어요` : `${r.name} 매칭확인 (이미 입금완료)`);
+    loadDeposits(); if (!$("sSheet").classList.contains("hidden")) runSearch();
+  } catch (e) { adminFail(e); renderLink(); }
+});
 // 처리 안 된 입금을 누르면: 회비 금액 이상이면 회비, 아니면 게스트비
 function openDeposit(x){
   if (!x || ME?.viewer) return;
@@ -1726,13 +1789,15 @@ async function runSearch(){
       const done = x.guest_id || x.fee_note;
       return `<li class="item dep${done ? "" : " can"}" ${done ? "" : `data-sdep="${x.id}"`}>
         <span class="time num"><b>${shortDate(x.received_at.slice(0, 10)).replace(/ \(.\)/, "")}</b><span>${x.received_at.slice(2, 4)}년 ${x.received_at.slice(11, 16)}</span></span>
-        <span class="who"><b>${esc(x.sender || "-")}</b>${depTag(x)}</span>
+        <span class="who"><b>${esc(x.sender || "-")}</b>${depTag(x)}${linkBtn(x)}</span>
         <span class="amt num">${x.amount == null ? "-" : won(x.amount)}</span>
       </li>`;
     }).join("");
   } catch (e) { adminFail(e); }
 }
 $("ssList").addEventListener("click", e => {
+  const lk = e.target.closest("[data-link]");
+  if (lk) { $("sSheet").classList.add("hidden"); return openLink(SS[lk.dataset.link]); }
   const li = e.target.closest("[data-sdep]"); if (!li || ME?.viewer) return;
   $("sSheet").classList.add("hidden"); openDeposit(SS[li.dataset.sdep]);
 });
@@ -1761,7 +1826,7 @@ async function loadDeposits(){
       const done = x.guest_id || x.fee_note;
       return `<li class="item dep${done ? "" : " can"}" ${done ? "" : `data-dep="${x.id}"`}>
         <span class="time num"><b>${hm}</b><span>${when}</span></span>
-        <span class="who"><b>${esc(x.sender || "-")}</b>${tag}</span>
+        <span class="who"><b>${esc(x.sender || "-")}</b>${tag}${linkBtn(x)}</span>
         <span class="amt num">${x.amount == null ? "-" : won(x.amount)}</span>
         ${ME && ME.super ? `<button class="btn-x" data-ddel="${x.id}" aria-label="알림 삭제">✕</button>` : ""}
       </li>`;
@@ -1770,6 +1835,8 @@ async function loadDeposits(){
 }
 // 슈퍼 관리자: 필요 없는 알림 삭제 (두 번 눌러 확인, 신청 상태는 안 바뀜)
 $("dList").addEventListener("click", async e => {
+  const lk = e.target.closest("[data-link]");
+  if (lk) return openLink(DEPS[lk.dataset.link]);
   const b = e.target.closest("[data-ddel]");
   if (!b) {
     const li = e.target.closest("[data-dep]"); if (!li) return;
