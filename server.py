@@ -107,6 +107,9 @@ def init_db():
             admin_id TEXT NOT NULL, created_at TEXT NOT NULL
         );
         ''')
+        con.execute('''CREATE TABLE IF NOT EXISTS withdrawal (   -- 폰 알림으로 들어온 출금 기록 (통장 잔액 계산용)
+            id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT NOT NULL, raw TEXT NOT NULL,
+            receiver TEXT, amount INTEGER NOT NULL)''')
         for k, v in DEFAULT_SETTINGS.items():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
         if 'fee_note' not in [r[1] for r in con.execute('PRAGMA table_info(deposit)')]:
@@ -493,6 +496,68 @@ def parse_deposit(text):
     return sender, amount, balance, acct
 
 
+def parse_withdraw(text):
+    """카카오뱅크 출금 알림 → (받는 사람, 금액) 또는 None
+    예) '출금 50,000원 입출금통장(5128) → 홍길동 잔액 1,234,567원' (내 통장 → 받는 사람)"""
+    t = ' '.join(str(text).split())
+    m_amt = re.search(r'출금\s*([\d,]+)\s*원', t)
+    if not m_amt: return None
+    m = re.search(r'\(\d{3,4}\)\s*→\s*(.+?)(?:\s*잔액\s*[\d,]+\s*원.*)?$', t[m_amt.end():])
+    if not m: return None
+    return m.group(1).strip()[:60], int(m_amt.group(1).replace(',', ''))
+
+
+# ── 통장 잔액: 관리자가 한 번 맞춘 잔액(기준) + 그 뒤 입금 − 출금 ─────────
+def bal_base(con):
+    r = {x['key']: x['value'] for x in con.execute("SELECT key, value FROM setting WHERE key IN ('bank_base','bank_base_at')")}
+    return (int(r['bank_base']), r['bank_base_at']) if r.get('bank_base_at') else (None, None)
+
+
+def bal_flow(con, a, b):
+    """a 초과 ~ b 이하 사이 입금 합계·건수, 출금 합계·건수"""
+    d = con.execute('SELECT COALESCE(SUM(amount),0) s, COUNT(amount) n FROM deposit WHERE amount IS NOT NULL AND received_at>? AND received_at<=?', (a, b)).fetchone()
+    w = con.execute('SELECT COALESCE(SUM(amount),0) s, COUNT(*) n FROM withdrawal WHERE received_at>? AND received_at<=?', (a, b)).fetchone()
+    return d['s'], d['n'], w['s'], w['n']
+
+
+def balance_at(con, t):
+    """t 시각의 통장 잔액 (기준이 없으면 None). 기준보다 앞이면 거꾸로 계산"""
+    base, at = bal_base(con)
+    if base is None: return None
+    if t >= at:
+        d, _, w, _ = bal_flow(con, at, t); return base + d - w
+    d, _, w, _ = bal_flow(con, t, at); return base - d + w
+
+
+def admin_balance(h, q, d):
+    """계좌 관리: 지금 계좌 + 현재 잔액 (기준 잔액 + 그 뒤 입금 − 출금) + 최근 출금"""
+    s = settings(defaults=True)
+    with db() as con:
+        base, at = bal_base(con)
+        dep = dn = wd = wn = 0
+        if base is not None: dep, dn, wd, wn = bal_flow(con, at, now())
+        last = con.execute("""SELECT received_at, raw FROM (SELECT received_at, raw FROM deposit UNION ALL SELECT received_at, raw FROM withdrawal)
+                              WHERE raw LIKE '%잔액%' ORDER BY received_at DESC LIMIT 1""").fetchone()
+        outs = [dict(r) for r in con.execute('SELECT received_at, receiver, amount FROM withdrawal ORDER BY received_at DESC LIMIT 10')]
+    bank = None
+    if last:
+        m = re.search(r'잔액\s*([\d,]+)\s*원', last['raw'])
+        if m: bank = {'amount': int(m.group(1).replace(',', '')), 'at': last['received_at']}
+    h.json({'bank_name': s['bank_name'], 'account_no': s['account_no'], 'holder': s['holder'],
+            'base': base, 'base_at': at, 'dep': dep, 'dep_n': dn, 'wd': wd, 'wd_n': wn,
+            'balance': None if base is None else base + dep - wd, 'bank': bank, 'outs': outs})
+
+
+def admin_balance_set(h, q, d):
+    """지금 통장 잔액을 기준으로 맞춤 — 이 시각 뒤로 들어온 입금은 더하고 출금은 뺌"""
+    v = re.sub(r'[,\s원]', '', str(d.get('amount') or ''))
+    if not re.fullmatch(r'\d{1,12}', v): raise ApiError('잔액을 숫자로 입력해주세요')
+    with db() as con:
+        for k, val in (('bank_base', v), ('bank_base_at', now())):
+            con.execute('INSERT OR REPLACE INTO setting(key, value) VALUES (?, ?)', (k, val))
+    h.json({'ok': True})
+
+
 def match_deposit(con, sender, amount):
     """입금대기 중인 신청 가운데 금액이 같고 보낸 사람 표시에 이름이 들어 있는 것을 찾음.
     금액을 모르면(None) 이름만으로 찾음. 최근 3일 신청만 보고,
@@ -522,6 +587,12 @@ def hook_deposit(h, q, d):
         raise ApiError('키가 맞지 않아요', 403)
     sender, amount, balance, acct = parse_deposit(raw)
     if sender is None:
+        w = parse_withdraw(raw)
+        if w:
+            with LOCK, db() as con:
+                con.execute('INSERT INTO withdrawal(received_at, raw, receiver, amount) VALUES (?,?,?,?)', (now(), raw[:500], w[0], w[1]))
+            hook_log(f'출금 | 받는사람={w[0]} 금액={w[1]} | {raw[:200]}')
+            return h.json({'ok': True, 'result': f'출금 {w[1]:,}원을 기록했어요 (잔액 계산용)'})
         hook_log(f'무시(입금 아님) | {raw[:200]}')
         return h.json({'ok': True, 'result': '입금 알림이 아니라서 무시했어요'})
     with LOCK, db() as con:
@@ -1244,8 +1315,21 @@ def admin_club_report(h, q, d):
                       'detail': ', '.join(f"{p['name']}{'(신입)' if p['new'] and not all(x['new'] for x in pre) else ''} {p['months']}개월" for p in pre),
                       'count': sum(p['months'] for p in pre), 'unit': fee, 'amount': sum(p['amount'] for p in pre)})
     lines.append({'kind': 'guest', 'title': f"게스트비 ({g['n']}명)", 'count': g['n'], 'amount': g['s']})
+    # 통장 잔액 기준 (기준 잔액을 맞춘 뒤에만): 전월이월 = 전달 말 잔액, 잔액 = 그 달 말(이번 달이면 지금), 지출 = 출금 알림
+    nxt = club.ym_add(ym, 1) + '-01 00:00:00'
+    start, end = ym + '-01 00:00:00', min(nxt, now())
+    bal = None
+    with db() as con:
+        if bal_base(con)[0] is not None and start <= now():
+            outs = [dict(r) for r in con.execute('SELECT received_at, receiver, amount FROM withdrawal WHERE received_at>? AND received_at<=? ORDER BY received_at', (start, end))]
+            bal = {'prev': balance_at(con, start), 'end': balance_at(con, end), 'spend': sum(o['amount'] for o in outs), 'outs': outs}
+            bal['income'] = bal['end'] - bal['prev'] + bal['spend']      # 통장에 실제로 들어온 돈
+    income = sum(l['amount'] for l in lines)
+    if bal and bal['income'] > income:                                   # 회비·게스트비 말고 들어온 돈
+        lines.append({'kind': 'etc', 'title': '기타 입금', 'amount': bal['income'] - income})
+        income = bal['income']
     h.json({
-        'month': ym, 'fee': fee, 'lines': lines, 'income': sum(l['amount'] for l in lines),
+        'month': ym, 'fee': fee, 'lines': lines, 'income': income, 'bal': bal,
         'new': names(new), 'quit': names(quit_),
         'sick': [m['name'] for m in members if status.get(m['id']) == '병가'],
         'trip': [m['name'] for m in members if status.get(m['id']) == '출장'],
@@ -1359,6 +1443,8 @@ ROUTES = {
     ('POST', '/api/admin/club/import'): admin_club_import,
     ('GET', '/api/admin/club/export'): admin_club_export,
     ('GET', '/api/admin/club/report'): admin_club_report,
+    ('GET', '/api/admin/balance'): admin_balance,
+    ('POST', '/api/admin/balance/set'): admin_balance_set,
     ('POST', '/api/hook/deposit'): hook_deposit,
 }
 

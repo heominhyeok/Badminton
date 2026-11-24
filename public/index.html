@@ -313,11 +313,11 @@
   #rPaper .sign td{height:52px}
   #rPaper .sign th{height:24px;width:80px}
   #rPaper h1{text-align:center;font-size:25px;font-weight:800;margin:22px 0 18px;letter-spacing:-.3px}
-  #rPaper h1 u{text-underline-offset:6px}
+  #rPaper h1 .ttl{display:inline-block;border-bottom:2px solid #111;padding:0 4px 7px}
   #rPaper h2{font-size:14px;font-weight:800;margin:16px 0 6px}
   #rPaper .unit{text-align:right;font-size:11px;color:#444;margin-bottom:4px}
   #rPaper .lines td{height:32px}
-  #rPaper .lines .sub2{display:block;font-size:11px;color:#555}
+  #rPaper .lines .sub2{display:block;font-size:10.5px;color:#555;white-space:nowrap}
   #rPaper .lines tr.tot td{font-weight:800;background:#FAFAFA}
   #rPaper .etc{border:1px solid #333;border-top:0;padding:14px 20px 16px}
   #rPaper .etc b{font-size:13.5px}
@@ -328,6 +328,16 @@
   #rPaper .cnt td,#rPaper .cnt th{height:24px;font-size:12px}
   #rPaper .cnt th{background:#DCE6F2}
   #rPaper .note{text-align:right;font-size:11px;color:#444;margin-top:12px}
+  .bal-card{cursor:default}
+  .bal-acct{display:block;font-size:15px;font-weight:700;margin-top:3px}
+  .bal-now{display:block;font-size:28px;font-weight:800;margin:2px 0 4px}
+  .bal-set{display:flex;gap:8px}
+  .bal-set input{flex:1;min-width:0;width:auto}
+  .bal-set .btn-sm{flex:none;padding:0 18px}
+  .bal-outs{list-style:none;margin:0;padding:0}
+  .bal-outs li{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 2px;border-bottom:1px solid var(--line, #EEE)}
+  .bal-outs li span{color:var(--sub)}
+  .bal-outs li.none{color:var(--sub);justify-content:center}
   .cpre{display:block;font-size:12.5px;font-weight:600;margin-top:4px;opacity:.85}
   .mdate{display:flex;align-items:center;gap:4px;background:var(--field);border-radius:12px;padding:4px 6px 4px 15px}
   .mdate span{font-size:14px;color:var(--sub);flex:1}
@@ -698,7 +708,7 @@
     <div class="pane hidden" id="tabSet">
       <div class="seg sm" role="tablist">
         <button role="tab" aria-selected="true" data-set="setMeet">모임</button>
-        <button role="tab" aria-selected="false" data-set="setBank">입금 계좌</button>
+        <button role="tab" aria-selected="false" data-set="setBank">계좌 관리</button>
         <button role="tab" aria-selected="false" data-set="setAcc">계정</button>
         <button role="tab" aria-selected="false" data-set="setPush">알림</button>
         <button role="tab" aria-selected="false" data-set="setUsers" class="hidden" id="setUsersTab">관리자</button>
@@ -725,6 +735,22 @@
         <p class="lbl">클럽 월 회비(원) · 입금 금액 ÷ 회비 = 개월 수</p><input name="club_fee" inputmode="numeric">
       </form>
       <form class="form field hidden" id="setBank" novalidate>
+        <div class="acard yellow bal-card">
+          <span class="t">지금 계좌</span>
+          <span class="bal-acct" id="balAcct">계좌 미설정</span>
+          <span class="t" style="margin-top:12px">현재 잔액</span>
+          <span class="bal-now num" id="balNow">-</span>
+          <span class="s" id="balCalc"></span>
+          <span class="s" id="balBank"></span>
+        </div>
+        <div class="ed">
+          <p class="lbl">통장 잔액 맞추기</p>
+          <div class="bal-set"><input id="balInput" inputmode="numeric" placeholder="지금 통장 잔액 (원)" autocomplete="off"><button type="button" class="btn-sm y" id="balSave">맞추기</button></div>
+          <p class="hint">지금 통장 앱에 보이는 잔액을 넣으면, 이 시각부터 들어온 입금은 더하고 출금은 빼서 계산해요</p>
+        </div>
+        <p class="lbl" style="margin-top:14px">최근 출금</p>
+        <ul class="bal-outs" id="balOuts"></ul>
+        <p class="lbl" style="margin-top:18px">계좌 정보 수정</p>
         <p class="lbl">은행</p>
         <select name="bank_name" required>
           <option value="" disabled selected>은행 선택</option>
@@ -1749,27 +1775,34 @@ const loadJs = src => new Promise((ok, no) => {
 function reportHtml(r){
   const [y, m] = r.month.split("-"), last = new Date(+y, +m, 0).getDate(), span = `${+m}/1~${+m}/${last}`;
   const n = v => Number(v || 0).toLocaleString("ko-KR");
-  const rows = r.lines.map(l => {
-    const sub = l.kind === "guest" ? "" : l.kind === "pre" ? `${l.detail} × ${n(l.unit)}원` : `${l.count}명 × ${n(l.unit)}원`;
-    return `<tr><td class="c">${span}</td><td>${esc(l.title)}${sub ? `<span class="sub2">${esc(sub)}</span>` : ""}</td><td class="r">${n(l.amount)}</td><td></td><td></td><td></td><td></td></tr>`;
-  });
-  while (rows.length < 10) rows.push("<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>");
+  // 수입: 회비 · 이전 달 미납분 · 선납금은 날짜·금액 칸을 묶어서 한 덩어리로
+  const grp = r.lines.filter(l => ["fee", "back", "pre"].includes(l.kind)), rest = r.lines.filter(l => !grp.includes(l));
+  const subOf = l => l.kind === "pre" ? `${l.detail} × ${n(l.unit)}원` : ["fee", "back"].includes(l.kind) ? `${l.count}명 × ${n(l.unit)}원` : "";
+  const inc = grp.map((l, i) => (i ? "" : `<td class="c" rowspan="${grp.length}">${span}</td>`)
+      + `<td>${esc(l.title)}<span class="sub2">${esc(subOf(l))}${grp.length > 1 ? ` = ${n(l.amount)}원` : ""}</span></td>`
+      + (i ? "" : `<td class="r" rowspan="${grp.length}">${n(grp.reduce((t, x) => t + x.amount, 0))}</td>`))
+    .concat(rest.map(l => `<td class="c">${span}</td><td>${esc(l.title)}</td><td class="r">${n(l.amount)}</td>`));
+  // 지출: 출금 알림 (잔액을 맞춘 뒤부터)
+  const outs = (r.bal?.outs || []).map(o => `<td class="c">${+o.received_at.slice(5, 7)}/${+o.received_at.slice(8, 10)}</td><td>${esc(o.receiver || "출금")}</td><td class="r">${n(o.amount)}</td>`);
+  const total = Math.max(10, inc.length, outs.length), empty3 = "<td></td><td></td><td></td>";
+  const rows = Array.from({ length: total }, (_, i) => `<tr>${i < inc.length ? inc[i] : i < grp.length ? "" : empty3}${outs[i] || empty3}<td></td></tr>`);
+  const bal = r.bal;
   const who = (label, list) => `<li>${label}(${list.length}명)${list.length ? " : " + esc(list.join(", ")) : ""}</li>`;
   const c = r.count;
   return `
     <table class="sign"><tr><th>재무</th><th>감사</th><th>회장</th></tr><tr><td></td><td></td><td></td></tr></table>
-    <h1><u>${y}년도 (${m})월 회비 결산서</u></h1>
+    <h1><span class="ttl">${y}년도 (${m})월 회비 결산서</span></h1>
     <h2>1. 총괄 결산 내역</h2>
     <div class="unit">(단위 : 원)</div>
     <table><tr><th>전월이월</th><th>수입</th><th>지출</th><th>잔액</th><th style="width:70px">비고</th></tr>
-      <tr><td class="r"></td><td class="r">${n(r.income)}</td><td class="r"></td><td class="r"></td><td class="c" style="font-size:11px">통장근거</td></tr></table>
+      <tr><td class="r">${bal ? n(bal.prev) : ""}</td><td class="r">${n(r.income)}</td><td class="r">${bal ? n(bal.spend) : ""}</td><td class="r">${bal ? n(bal.end) : ""}</td><td class="c" style="font-size:11px">통장근거</td></tr></table>
     <h2>2. 수입 / 지출 내역</h2>
     <table class="lines">
-      <colgroup><col style="width:82px"><col><col style="width:92px"><col style="width:82px"><col style="width:150px"><col style="width:84px"><col style="width:52px"></colgroup>
+      <colgroup><col style="width:78px"><col><col style="width:86px"><col style="width:58px"><col style="width:128px"><col style="width:84px"><col style="width:44px"></colgroup>
       <tr><th colspan="3">수 입</th><th colspan="3">지 출</th><th rowspan="2">비고</th></tr>
       <tr><th>날짜</th><th>내 역</th><th>금액</th><th>날짜</th><th>내 역</th><th>금액</th></tr>
       ${rows.join("")}
-      <tr class="tot"><td class="c">소계</td><td></td><td class="r">${n(r.income)}</td><td class="c">소계</td><td></td><td class="r"></td><td></td></tr>
+      <tr class="tot"><td class="c">소계</td><td></td><td class="r">${n(r.income)}</td><td class="c">소계</td><td></td><td class="r">${bal ? n(bal.spend) : ""}</td><td></td></tr>
     </table>
     <div class="etc"><b>[기타사항]</b>
       <ul>${who("신입회원", r.new)}${who("탈퇴", r.quit)}${who("병가", r.sick)}${who("출장", r.trip)}</ul>
@@ -2039,7 +2072,31 @@ function pickSet(id){
   $("saveBtn").textContent = setForm === "setAcc" ? "비밀번호 바꾸기" : "저장";
   if (setForm === "setUsers") { U.page = 1; loadUsers(); }
   if (setForm === "setPush") pushRefresh();
+  if (setForm === "setBank") loadBalance();
 }
+/* 계좌 관리: 지금 계좌 + 현재 잔액 (기준 잔액 + 입금 − 출금) */
+const mdhm = t => `${+t.slice(5, 7)}/${+t.slice(8, 10)} ${t.slice(11, 16)}`;
+async function loadBalance(){
+  try {
+    const r = await api("/api/admin/balance");
+    $("balAcct").textContent = r.account_no ? `${r.bank_name} ${prettyAcct(r.account_no)} ${r.holder}` : "계좌 미설정";
+    $("balNow").textContent = r.balance === null ? "잔액을 맞춰주세요" : won(r.balance);
+    $("balCalc").textContent = r.balance === null ? "아래에 지금 통장 잔액을 한 번 넣으면 그때부터 자동으로 계산해요"
+      : `기준 ${won(r.base)} (${mdhm(r.base_at)}) + 입금 ${won(r.dep)} (${r.dep_n}건) − 출금 ${won(r.wd)} (${r.wd_n}건)`;
+    $("balBank").textContent = r.bank ? `마지막 은행 알림의 잔액 ${won(r.bank.amount)} (${mdhm(r.bank.at)})` : "";
+    $("balOuts").innerHTML = r.outs.length ? r.outs.map(o => `<li><b>${esc(o.receiver || "출금")}</b><span>${mdhm(o.received_at)}</span><b class="num">−${won(o.amount)}</b></li>`).join("")
+      : `<li class="none">아직 출금 알림이 없어요</li>`;
+  } catch (e) { adminFail(e); }
+}
+$("balInput").addEventListener("input", e => { const v = e.target.value.replace(/\D/g, ""); e.target.value = v ? Number(v).toLocaleString("ko-KR") : ""; });
+$("balSave").addEventListener("click", async () => {
+  const v = $("balInput").value.replace(/\D/g, "");
+  if (!v) return toast("지금 통장 잔액을 넣어주세요");
+  try {
+    await api("/api/admin/balance/set", { amount: v });
+    $("balInput").value = ""; toast(`잔액을 ${won(v)}으로 맞췄어요`); loadBalance();
+  } catch (e) { adminFail(e); }
+});
 
 /* 관리자 폰 알림 (입금 완료된 게스트) — 이 휴대폰 브라우저에 등록, 로그아웃해도 유지 */
 const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -2244,6 +2301,7 @@ $("saveBtn").addEventListener("click", async () => {
     const body = {};
     for (const el of $(setForm).elements) if (el.name && el.type !== "radio") body[el.name] = el.value;
     await api("/api/admin/settings", body);
+    if (setForm === "setBank") loadBalance();
     if (setForm === "setMeet") Object.assign(CAL.defaults, body);
     await loadPublic();
     toast("저장했어요");
