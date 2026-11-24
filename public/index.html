@@ -302,6 +302,33 @@
   .lg-wk{background:#FFF1A6;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
   .lg-ex{background:var(--yellow)}
   .lg-off{background:var(--faint)}
+  #rPaper{position:fixed;left:-10000px;top:0;width:794px;height:1123px;background:#fff;color:#111;box-sizing:border-box;padding:46px 52px;
+    font-family:"Pretendard Variable",Pretendard,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:12.5px;line-height:1.35}
+  #rPaper table{border-collapse:collapse;width:100%}
+  #rPaper th,#rPaper td{border:1px solid #333;padding:0 8px;height:30px}
+  #rPaper th{background:#F2F2F2;font-weight:700;text-align:center}
+  #rPaper .r{text-align:right;font-variant-numeric:tabular-nums}
+  #rPaper .c{text-align:center}
+  #rPaper .sign{width:240px;margin-left:auto}
+  #rPaper .sign td{height:52px}
+  #rPaper .sign th{height:24px;width:80px}
+  #rPaper h1{text-align:center;font-size:25px;font-weight:800;margin:22px 0 18px;letter-spacing:-.3px}
+  #rPaper h1 u{text-underline-offset:6px}
+  #rPaper h2{font-size:14px;font-weight:800;margin:16px 0 6px}
+  #rPaper .unit{text-align:right;font-size:11px;color:#444;margin-bottom:4px}
+  #rPaper .lines td{height:32px}
+  #rPaper .lines .sub2{display:block;font-size:11px;color:#555}
+  #rPaper .lines tr.tot td{font-weight:800;background:#FAFAFA}
+  #rPaper .etc{border:1px solid #333;border-top:0;padding:14px 20px 16px}
+  #rPaper .etc b{font-size:13.5px}
+  #rPaper .etc ul{list-style:none;margin:8px 0 0;padding:0}
+  #rPaper .etc li{margin:6px 0;font-size:13px}
+  #rPaper .etc li::before{content:"●";margin-right:8px}
+  #rPaper .cnt{width:62%;margin:10px 0 0 auto}
+  #rPaper .cnt td,#rPaper .cnt th{height:24px;font-size:12px}
+  #rPaper .cnt th{background:#DCE6F2}
+  #rPaper .note{text-align:right;font-size:11px;color:#444;margin-top:12px}
+  .cpre{display:block;font-size:12.5px;font-weight:600;margin-top:4px;opacity:.85}
   .mdate{display:flex;align-items:center;gap:4px;background:var(--field);border-radius:12px;padding:4px 6px 4px 15px}
   .mdate span{font-size:14px;color:var(--sub);flex:1}
   .mdate b{font-size:15px;min-width:92px;text-align:center}
@@ -584,6 +611,7 @@
             <span class="cpaid" id="cPaid"></span>
             <span class="big num" id="cSum">0원</span>
           </span>
+          <span class="cpre hidden" id="cPre"></span>
           <span class="s" id="cCounts" style="margin-top:4px"></span>
         </div>
         <div class="filters" role="group" aria-label="회원 필터">
@@ -613,9 +641,8 @@
         <div class="bfoot" id="bFoot"></div>
         <div class="bact">
           <button class="cta dark" type="button" id="xlsBtn">엑셀 다운로드</button>
-          <button class="cta ed super-only" type="button" id="cImportBtn">엑셀 가져오기</button>
+          <button class="cta" type="button" id="rptBtn">결산 다운로드</button>
         </div>
-        <input type="file" id="cFile" class="hidden" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="회비 엑셀 파일">
       </div>
     </div>
 
@@ -871,6 +898,19 @@
 </div>
 
 <!-- 회비 현황 엑셀 다운로드: 연도 고르기 -->
+<div class="sheet-bg hidden" id="rSheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+    <h3 id="rTitle">결산 다운로드</h3>
+    <p class="sheet-sub">몇 월 회비 결산서를 받을까요? (PDF)</p>
+    <div class="mdate"><span>달</span><button type="button" id="rPrev" aria-label="이전 달">‹</button><b id="rMonth"></b><button type="button" id="rNext" aria-label="다음 달">›</button></div>
+    <button class="cta" type="button" id="rGo" style="margin-top:12px">PDF 다운로드</button>
+    <button class="sheet-close" type="button" id="rClose">닫기</button>
+  </div>
+</div>
+
+<!-- 결산서 PDF 를 그리는 A4 종이 (화면 밖) -->
+<div id="rPaper" aria-hidden="true"></div>
+
 <div class="sheet-bg hidden" id="xSheet">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="xTitle">
     <h3 id="xTitle">엑셀 다운로드</h3>
@@ -1459,14 +1499,25 @@ function renderClub(){
   $("cFeeTag").textContent = `1인 ${won(C.fee)}`;
   $("cNow").innerHTML = `현재 회원 <b class="num">${cur.length}</b>명 <small>(활동 ${cnt("활동")} · 병가 ${cnt("병가")} · 출장 ${cnt("출장")}) · 탈퇴 ${cnt("탈퇴")}명</small>`;
   $("cPaid").innerHTML = `납부 <b class="num">${paid.length}</b> / ${target.length}명`;
-  $("cSum").textContent = won(sum);
+  // 이번 달에 받은 선납금 (다음 달 이후분) — 총 금액에 더하고 그 중 신입 선납·선납 얼마인지 따로 표시
+  const pre = { 신입: { amt: 0, who: [] }, 기존: { amt: 0, who: [] } };
+  for (const m of ms) {
+    const rows = Object.entries(C.fmap[m.id] || {}).filter(([ym, r]) => r.kind === "납부" && ym > now && (r.paid_on || ym).slice(0, 7) === now);
+    if (!rows.length) continue;
+    const g = pre[m.since === now ? "신입" : "기존"];
+    g.amt += rows.reduce((t, [, r]) => t + (r.amount || C.fee), 0); g.who.push(`${m.name} ${rows.length}개월`);
+  }
+  const preSum = pre.신입.amt + pre.기존.amt;
+  $("cSum").textContent = won(sum + preSum);
+  $("cPre").classList.toggle("hidden", !preSum);
+  $("cPre").innerHTML = preSum ? `그 중 ${+now.slice(5)}월분 ${won(sum)} · `
+    + [["신입 선납", pre.신입], ["선납", pre.기존]].filter(([, g]) => g.amt).map(([t, g]) => `${t} <b class="num">${won(g.amt)}</b> <small>(${esc(g.who.join(", "))})</small>`).join(" · ") : "";
   $("cCounts").textContent = `납부 기준 ${target.length}명 = 현재 회원 ${cur.length}`
     + (exempt.length ? ` − 면제 ${exempt.length}` : "") + (away.length ? ` − 병가·출장 ${away.length}` : "")
     + (later.length ? ` − 다음 달부터 ${later.length}` : "");
   const f = C.filter, ul = $("cList");
   if (!ms.length) {
-    ul.innerHTML = `<li class="empty"><div><b>아직 회원이 없어요</b>${ME?.super ? "회비 엑셀로 한 번에 가져오거나 한 명씩 추가해요" : "회원을 추가해주세요"}
-      ${ME?.super ? `<br><button class="btn-sm y ed" type="button" data-import="1" style="margin-top:12px">엑셀로 가져오기</button>` : ""}</div></li>`;
+    ul.innerHTML = `<li class="empty"><div><b>아직 회원이 없어요</b>회원을 추가해주세요</div></li>`;
     return renderBoard();
   }
   const list = ms.filter(m => f === "탈퇴" ? m.status === "탈퇴" : m.status !== "탈퇴" && (!f
@@ -1518,7 +1569,6 @@ const halfAdd = n => { const [y, h] = C.half.split("-").map(Number); const t = y
 $("bPrev").addEventListener("click", () => halfAdd(-1));
 $("bNext").addEventListener("click", () => halfAdd(1));
 $("cList").addEventListener("click", e => {
-  if (e.target.closest("[data-import]")) return pickImport();
   const li = e.target.closest("[data-mid]"); if (!li || ME?.viewer) return;
   openMember(memberOf(+li.dataset.mid));
 });
@@ -1527,7 +1577,7 @@ $("board").addEventListener("click", e => {
   openCell(memberOf(+b.dataset.bm), b.dataset.ym);
 });
 // 시트 바깥(어두운 곳)·닫기 버튼으로 닫기
-for (const [sheet, close] of [["memSheet", "msClose"], ["cSheet", "csClose"], ["fSheet", "fsClose"], ["xSheet", "xClose"]]) {
+for (const [sheet, close] of [["memSheet", "msClose"], ["cSheet", "csClose"], ["fSheet", "fsClose"], ["xSheet", "xClose"], ["rSheet", "rClose"]]) {
   $(sheet).addEventListener("click", e => { if (e.target.id === sheet) $(sheet).classList.add("hidden"); });
   $(close).addEventListener("click", () => $(sheet).classList.add("hidden"));
 }
@@ -1684,27 +1734,67 @@ $("fsSave").addEventListener("click", async () => {
   } catch (e) { adminFail(e); $("fsSave").disabled = false; }
 });
 
-/* 엑셀 가져오기 (슈퍼 관리자, 회원·회비를 엑셀 내용으로 바꿈) */
-function pickImport(){
-  const b = $("cImportBtn");
-  if (C.members.length && !b.classList.contains("arm")) {
-    b.classList.add("arm"); b.textContent = "지금 회원·회비를 바꿔요. 한 번 더";
-    setTimeout(() => { b.classList.remove("arm"); b.textContent = "엑셀 가져오기"; }, 3000);
-    return;
-  }
-  b.classList.remove("arm"); b.textContent = "엑셀 가져오기";
-  $("cFile").click();
+/* 월 회비 결산서 PDF: 달 고르기 → A4 종이를 그려서 PDF 로 저장 */
+let rMonth = "";
+const rShow = () => { $("rMonth").textContent = `${rMonth.slice(0, 4)}년 ${+rMonth.slice(5)}월`; };
+$("rptBtn").addEventListener("click", () => { rMonth = C.ym || new Date().toLocaleDateString("sv-SE").slice(0, 7); rShow(); $("rSheet").classList.remove("hidden"); });
+$("rPrev").addEventListener("click", () => { rMonth = ymAdd(rMonth, -1); rShow(); });
+$("rNext").addEventListener("click", () => { rMonth = ymAdd(rMonth, 1); rShow(); });
+const loadJs = src => new Promise((ok, no) => {
+  if (document.querySelector(`script[src="${src}"]`)) return ok();
+  const el = document.createElement("script"); el.src = src; el.onload = ok;
+  el.onerror = () => { el.remove(); no(new Error("PDF 도구를 불러오지 못했어요. 인터넷 연결을 확인해주세요")); };
+  document.head.appendChild(el);
+});
+function reportHtml(r){
+  const [y, m] = r.month.split("-"), last = new Date(+y, +m, 0).getDate(), span = `${+m}/1~${+m}/${last}`;
+  const n = v => Number(v || 0).toLocaleString("ko-KR");
+  const rows = r.lines.map(l => {
+    const sub = l.kind === "guest" ? "" : l.kind === "pre" ? `${l.detail} × ${n(l.unit)}원` : `${l.count}명 × ${n(l.unit)}원`;
+    return `<tr><td class="c">${span}</td><td>${esc(l.title)}${sub ? `<span class="sub2">${esc(sub)}</span>` : ""}</td><td class="r">${n(l.amount)}</td><td></td><td></td><td></td><td></td></tr>`;
+  });
+  while (rows.length < 10) rows.push("<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>");
+  const who = (label, list) => `<li>${label}(${list.length}명)${list.length ? " : " + esc(list.join(", ")) : ""}</li>`;
+  const c = r.count;
+  return `
+    <table class="sign"><tr><th>재무</th><th>감사</th><th>회장</th></tr><tr><td></td><td></td><td></td></tr></table>
+    <h1><u>${y}년도 (${m})월 회비 결산서</u></h1>
+    <h2>1. 총괄 결산 내역</h2>
+    <div class="unit">(단위 : 원)</div>
+    <table><tr><th>전월이월</th><th>수입</th><th>지출</th><th>잔액</th><th style="width:70px">비고</th></tr>
+      <tr><td class="r"></td><td class="r">${n(r.income)}</td><td class="r"></td><td class="r"></td><td class="c" style="font-size:11px">통장근거</td></tr></table>
+    <h2>2. 수입 / 지출 내역</h2>
+    <table class="lines">
+      <colgroup><col style="width:82px"><col><col style="width:92px"><col style="width:82px"><col style="width:150px"><col style="width:84px"><col style="width:52px"></colgroup>
+      <tr><th colspan="3">수 입</th><th colspan="3">지 출</th><th rowspan="2">비고</th></tr>
+      <tr><th>날짜</th><th>내 역</th><th>금액</th><th>날짜</th><th>내 역</th><th>금액</th></tr>
+      ${rows.join("")}
+      <tr class="tot"><td class="c">소계</td><td></td><td class="r">${n(r.income)}</td><td class="c">소계</td><td></td><td class="r"></td><td></td></tr>
+    </table>
+    <div class="etc"><b>[기타사항]</b>
+      <ul>${who("신입회원", r.new)}${who("탈퇴", r.quit)}${who("병가", r.sick)}${who("출장", r.trip)}</ul>
+      <table class="cnt"><tr><th>적요</th><th>전월</th><th>가입</th><th>탈퇴</th><th>회원</th></tr>
+        <tr><td class="c">회원</td><td class="c">${c.prev}</td><td class="c">${c.join || "-"}</td><td class="c">${c.quit || "-"}</td><td class="c">${c.now}</td></tr></table>
+      <div class="note">회원 수는 병가 · 총무 · 재무 포함</div>
+    </div>`;
 }
-$("cImportBtn").addEventListener("click", pickImport);
-$("cFile").addEventListener("change", async e => {
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  toast("엑셀을 읽는 중이에요…");
+$("rGo").addEventListener("click", async () => {
+  const btn = $("rGo"); btn.disabled = true; btn.textContent = "만드는 중…";
   try {
-    const r = await fetch("/api/admin/club/import", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: f });
-    const j = await r.json().catch(() => ({ error: "서버 응답을 읽지 못했어요" }));
-    if (!r.ok) { const err = new Error(j.error); err.status = r.status; throw err; }
-    toast(`회원 ${j.members}명(활동 ${j.active}명) · 회비 기록 ${j.fees}건 가져왔어요`); loadClub();
-  } catch (err) { adminFail(err); }
+    const r = await api(`/api/admin/club/report?month=${rMonth}`);
+    await loadJs("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+    await loadJs("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    const paper = $("rPaper"); paper.innerHTML = reportHtml(r);
+    if (document.fonts?.ready) await document.fonts.ready;
+    const canvas = await html2canvas(paper, { scale: 3, backgroundColor: "#ffffff", logging: false, windowWidth: 794 });
+    const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 210, 297, undefined, "FAST");
+    const [y, m] = rMonth.split("-");
+    pdf.save(`${y}년 ${m}월 회비결산서.pdf`);
+    paper.innerHTML = "";
+    $("rSheet").classList.add("hidden"); toast(`${y}년 ${+m}월 결산서를 받았어요`);
+  } catch (e) { adminFail(e); }
+  finally { btn.disabled = false; btn.textContent = "PDF 다운로드"; }
 });
 
 /* 엑셀 다운로드: 연도 골라서 1년치 */

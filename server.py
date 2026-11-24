@@ -1201,6 +1201,59 @@ def admin_fee_pay(h, q, d):
     h.json({'ok': True, 'note': note})
 
 
+def admin_club_report(h, q, d):
+    """월 회비 결산서 (PDF 는 화면에서 그림) — 고른 달 1개월
+    수입 = 그 달에 들어온 돈 (입금한 달 기준): 그 달 회비(인원 × 회비) / 이전 달 미납분 / 선납금(다음 달 이후분) / 게스트비
+    기타사항 = 그 달 신입·탈퇴·병가·출장 명단, 회원 표 = 전월·가입·탈퇴·회원 (병가·총무·재무 포함)"""
+    ym = q.get('month') or this_ym()
+    if not re.fullmatch(r'\d{4}-\d{2}', ym): raise ApiError('달 형식이 잘못됐어요')
+    fee = club_fee()
+    prev = club.ym_add(ym, -1)
+    with db() as con:
+        fill_status_months(con)
+        members = [dict(r) for r in con.execute('SELECT id, name, since, sort FROM member ORDER BY sort, id')]
+        left = {r['member_id']: r['m'] for r in con.execute("SELECT member_id, MIN(ym) m FROM fee WHERE kind='탈퇴' GROUP BY member_id")}
+        status = {}
+        for r in con.execute("SELECT member_id, kind FROM fee WHERE ym=? AND kind IN ('병가','출장')", (ym,)):
+            status[r['member_id']] = r['kind']
+        paid = con.execute(f"""SELECT f.member_id, f.ym, f.amount, m.name, m.since FROM fee f JOIN member m ON m.id=f.member_id
+                               WHERE f.kind='납부' AND substr({PAID_SQL.replace('paid_on', 'f.paid_on').replace('ym ||', 'f.ym ||')},1,7)=?
+                               ORDER BY m.sort, f.ym""", (ym,)).fetchall()
+        g = con.execute("SELECT COUNT(*) n, COALESCE(SUM(fee),0) s FROM guest WHERE status='신청완료' AND substr(meet_date,1,7)=?", (ym,)).fetchone()
+    first = min((m['since'] or ym for m in members), default=ym)
+    def is_member(m, at):
+        return (m['since'] or first) <= at and not (left.get(m['id']) and left[m['id']] <= at)
+    new = [m for m in members if m['since'] == ym and ym != first]
+    quit_ = [m for m in members if left.get(m['id']) == ym]
+    names = lambda ms: [m['name'] for m in ms]
+    cur = [r for r in paid if r['ym'] == ym]
+    back = [r for r in paid if r['ym'] < ym]
+    pre = {}
+    for r in paid:
+        if r['ym'] > ym:
+            p = pre.setdefault(r['member_id'], {'name': r['name'], 'new': r['since'] == ym, 'months': 0, 'amount': 0})
+            p['months'] += 1; p['amount'] += r['amount'] or 0
+    pre = list(pre.values())
+    lines = [{'kind': 'fee', 'title': f'{int(ym[5:])}월 회비', 'count': len({r['member_id'] for r in cur}),
+              'unit': fee, 'amount': sum(r['amount'] or 0 for r in cur)}]
+    if back:
+        lines.append({'kind': 'back', 'title': '이전 달 회비 (미납분)', 'count': len(back), 'unit': fee,
+                      'amount': sum(r['amount'] or 0 for r in back)})
+    if pre:
+        lines.append({'kind': 'pre', 'title': ('신입회원 선납금' if all(p['new'] for p in pre) else '선납금'),
+                      'detail': ', '.join(f"{p['name']}{'(신입)' if p['new'] and not all(x['new'] for x in pre) else ''} {p['months']}개월" for p in pre),
+                      'count': sum(p['months'] for p in pre), 'unit': fee, 'amount': sum(p['amount'] for p in pre)})
+    lines.append({'kind': 'guest', 'title': f"게스트비 ({g['n']}명)", 'count': g['n'], 'amount': g['s']})
+    h.json({
+        'month': ym, 'fee': fee, 'lines': lines, 'income': sum(l['amount'] for l in lines),
+        'new': names(new), 'quit': names(quit_),
+        'sick': [m['name'] for m in members if status.get(m['id']) == '병가'],
+        'trip': [m['name'] for m in members if status.get(m['id']) == '출장'],
+        'count': {'prev': sum(is_member(m, prev) for m in members), 'join': len(new), 'quit': len(quit_),
+                  'now': sum(is_member(m, ym) for m in members)},
+    })
+
+
 def admin_club_export(h, q, d):
     """회비 현황 엑셀 다운로드 — 고른 연도 1년치 (지금 쓰는 '회비내역(연도)' 양식)"""
     year = q.get('year') or today()[:4]
@@ -1305,6 +1358,7 @@ ROUTES = {
     ('POST', '/api/admin/fees/pay'): admin_fee_pay,
     ('POST', '/api/admin/club/import'): admin_club_import,
     ('GET', '/api/admin/club/export'): admin_club_export,
+    ('GET', '/api/admin/club/report'): admin_club_report,
     ('POST', '/api/hook/deposit'): hook_deposit,
 }
 
