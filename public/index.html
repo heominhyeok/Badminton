@@ -379,6 +379,7 @@
     <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></div>
     <h2>휴대폰에서 열어주세요</h2>
     <p>PC에서는 접속할 수 없어요.<br>휴대폰으로 이 주소를 열어주세요.</p>
+    <button class="cta dark" type="button" id="pcAdminBtn" style="margin:22px auto 0;width:auto;padding:14px 26px">관리자 로그인</button>
   </div>
 </div>
 <div class="app" id="mainApp">
@@ -946,7 +947,16 @@ async function copy(text){
   }
 }
 const SECTIONS = ["stepApply","stepPay","adminLogin","pwChange","admin"];
-function show(id){ SECTIONS.forEach(s => $(s).classList.toggle("hidden", s !== id)); }
+// PC: 게스트 화면은 막고(안내 화면) 관리자 화면만 열어줌 (사용자 결정 2026-11-24). iPad는 PC처럼 보이는 경우가 있어 터치로 구분
+const ON_PC = !(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+const ADMIN_SECTIONS = ["adminLogin", "pwChange", "admin"];
+function show(id){
+  const block = ON_PC && !ADMIN_SECTIONS.includes(id);
+  $("pcBlock").classList.toggle("hidden", !block);
+  $("mainApp").classList.toggle("hidden", block);
+  if (block) return;
+  SECTIONS.forEach(s => $(s).classList.toggle("hidden", s !== id));
+}
 document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { stopAdmin(); show(b.dataset.go); loadPublic(); }));
 
 /* ───────── 게스트 ───────── */
@@ -1170,6 +1180,7 @@ $("toAdmin").addEventListener("click", async () => {
     if (!s?.pw) setTimeout(() => $(s?.id ? "adminPw" : "adminId").focus(), 50);
   }
 });
+$("pcAdminBtn").addEventListener("click", () => $("toAdmin").click());   // PC 안내 화면의 관리자 버튼
 async function login(){
   $("loginErr").textContent = "";
   const id = $("adminId").value.trim(), pw = $("adminPw").value;
@@ -2040,10 +2051,8 @@ $("saveBtn").addEventListener("click", async () => {
 
 /* 시작: 진행 중이던 신청이 있으면 이어서 */
 (async function init(){
-  // 휴대폰에서만 사용 (게스트·관리자 모두). iPad는 PC처럼 보이는 경우가 있어 터치로 구분
-  const ua = navigator.userAgent;
-  const onPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-  if (!onPhone) { $("mainApp").classList.add("hidden"); $("pcBlock").classList.remove("hidden"); return; }
+  // PC: 게스트 신청은 막고 안내 화면 (관리자 로그인 버튼만)
+  if (ON_PC) { show("stepApply"); loadPublic(); return; }
   await loadPublic();
   try { me = JSON.parse(localStorage.getItem(ME_KEY) || "null"); } catch {}
   if (me) {
