@@ -170,6 +170,95 @@
   .filters button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
   .filters .add-btn{margin-left:auto;color:var(--ink);background:var(--field)}
   .mform{display:flex;flex-direction:column;gap:8px}
+  /* ── 회원·회비 ── */
+  #admin.viewer .ed{display:none!important}
+  .mv{flex:1;min-height:0;display:flex;flex-direction:column}
+  #cList{overflow-y:auto}
+  .cpaid{font-size:13px;font-weight:600}
+  .cpaid b{font-size:26px;font-weight:800;margin:0 2px}
+  .item.mem{cursor:pointer}
+  .item.mem.left{opacity:.5}
+  .item .who .role,.bn i,.cand .role{font-style:normal;font-size:11px;font-weight:700;color:#6B4E00;background:#FFF3B0;padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:1px}
+  .mbadge{flex:none;font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px}
+  .b-paid{color:var(--green);background:var(--green-soft)}
+  .b-unpaid{color:var(--coral);background:var(--coral-soft)}
+  .b-sick{color:#1D4E9E;background:#E6EEFB}
+  .b-trip{color:#8A4B00;background:#FFF0DC}
+  .b-gray{color:var(--sub);background:var(--field)}
+  .board{flex:1;min-height:0;overflow-y:auto;font-size:12px}
+  .brow{display:grid;grid-template-columns:64px repeat(6,minmax(0,1fr));gap:3px;padding:2px 0;align-items:center}
+  .bhead{position:sticky;top:0;background:var(--bg);z-index:1;color:var(--sub);font-weight:600;text-align:center;padding:2px 0 6px}
+  .bhead .cur{color:var(--ink);font-weight:800}
+  .bn{text-align:left;display:flex;flex-direction:column;min-width:0}
+  .bn b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bn i{align-self:flex-start;margin:1px 0 0;font-size:10px;padding:0 4px}
+  .bc{border:0;border-radius:7px;min-height:34px;padding:2px 0;font-size:12px;font-weight:600;background:none;color:var(--faint);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15}
+  .bc small{font-size:9.5px;font-weight:700}
+  .c-paid{background:var(--green-soft);color:var(--green)}
+  .c-pre{background:#D3EEDD;color:#1B6B3A}
+  .c-unpaid{color:var(--coral);box-shadow:inset 0 0 0 1.5px var(--coral-soft);font-weight:700}
+  .c-병가{background:#E6EEFB;color:#1D4E9E;font-weight:700}
+  .c-출장{background:#FFF0DC;color:#8A4B00;font-weight:700}
+  .c-탈퇴{background:var(--coral-soft);color:var(--coral);font-weight:700}
+  .c-exempt{background:var(--field);color:var(--sub)}
+  .c-none{background:var(--field);opacity:.45}
+  .brow.left{opacity:.6}
+  .blegend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--sub);margin-top:8px;flex:none}
+  .blegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+  .bfoot{display:flex;justify-content:space-between;gap:4px 10px;flex-wrap:wrap;font-size:12px;color:#48484A;background:#FFF8CC;border-radius:12px;padding:10px 14px;margin-top:8px;flex:none}
+  .bfoot b{color:#1E1E1E}
+  .bfoot .coral{color:var(--coral)}
+  .bact{display:flex;gap:8px;padding:8px 0 calc(10px + env(safe-area-inset-bottom));flex:none}
+  .bact .cta{flex:1;padding:13px;font-size:15px}
+  .sheet-scroll{max-height:66vh;overflow-y:auto;margin:0 -4px;padding:0 4px}
+  .sheet-sub{font-size:13px;color:var(--sub);margin:-8px 0 10px}
+  .sheet-row{display:flex;justify-content:space-between}
+  .sheet-row .sheet-close{width:auto;padding:12px 4px 2px}
+  .chips2{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:0;background:var(--field);padding:10px 13px;border-radius:11px;font-size:14px;font-weight:600;color:var(--ink)}
+  .chip.on{background:var(--ink);color:var(--bg)}
+  .chip.add{background:none;box-shadow:inset 0 0 0 1.5px var(--faint);color:var(--sub)}
+  .chip.wide{display:block;width:100%;margin-top:6px;padding:12px}
+  .stgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  .stgrid.five{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .stgrid .chip{padding:11px 0}
+  .mrow-in{display:flex;gap:6px;margin-top:6px}
+  .field .mrow-in input{flex:1;min-width:0;padding:11px 13px;font-size:14px}
+  .btn-sm.dk{background:var(--ink);color:var(--bg);padding:0 14px}
+  .btn-sm.v{background:var(--field);color:var(--ink)}
+  .sw{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--field);border-radius:12px;padding:12px 15px}
+  .sw span{display:flex;flex-direction:column}
+  .sw b{font-size:14px}
+  .sw small{font-size:12px;color:var(--sub)}
+  .field .sw input{width:24px;height:24px;flex:none;padding:0;accent-color:var(--ink)}
+  .lbl2{font-size:12px;color:var(--sub);margin:4px 2px 6px}
+  .lbl2 small{font-size:11px;color:var(--faint)}
+  .cands{display:flex;flex-direction:column;gap:6px}
+  .cand{display:flex;align-items:center;gap:10px;width:100%;border:0;box-shadow:inset 0 0 0 1.5px var(--line);background:var(--bg);border-radius:13px;padding:10px 12px;text-align:left;color:var(--ink)}
+  .cand.on{box-shadow:inset 0 0 0 2px var(--ink)}
+  .cand .ck{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 2px var(--faint);flex:none;display:grid;place-items:center;font-size:13px;font-weight:800}
+  .cand.on .ck{background:var(--ink);color:var(--bg);box-shadow:none}
+  .cand.on .ck::after{content:"✓"}
+  .cand .cn{flex:1;min-width:0;display:flex;flex-direction:column}
+  .cand .cn b{font-size:15px}
+  .cand .cn span{font-size:12px;color:var(--sub)}
+  .cand .how{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;flex:none}
+  .how.full{color:var(--green);background:var(--green-soft)}
+  .how.given{color:var(--sub);background:var(--field)}
+  .fs-info{font-size:13px;font-weight:600;color:var(--green);background:var(--green-soft);border-radius:12px;padding:10px 13px;margin:10px 0 6px}
+  .fs-info.bad{color:var(--coral);background:var(--coral-soft)}
+  .ylbl{display:flex;align-items:center;justify-content:space-between}
+  .ynav{display:flex;align-items:center;gap:4px}
+  .ynav b{font-size:14px;min-width:56px;text-align:center}
+  .ynav button{border:0;background:var(--field);width:34px;height:30px;border-radius:9px;font-size:16px;color:var(--ink)}
+  .mgrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
+  .mchip{border:0;background:var(--field);border-radius:10px;padding:10px 0;font-size:13px;font-weight:600;color:var(--ink)}
+  .mchip.paid{background:var(--green-soft);color:var(--green);opacity:.75}
+  .mchip.start{background:var(--ink);color:var(--bg);font-weight:700}
+  .mchip.in{background:#FFF3B0;color:#1E1E1E;font-weight:700}
+  .fs-multi{list-style:none;display:flex;flex-direction:column;gap:4px;margin-top:4px;font-size:14px}
+  .fs-multi li{background:var(--field);border-radius:10px;padding:9px 12px}
+  .dep .who .tag-fee{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin:3px 0 0;color:var(--coral);background:var(--coral-soft)}
   .mrow{display:flex;flex-direction:column;gap:4px;min-width:0}
   .mrow span{font-size:12px;color:var(--sub);margin-left:2px}
   .sheet-close.danger{color:var(--coral);font-weight:600}
@@ -423,6 +512,7 @@
     <nav class="nav"><button class="icon" type="button" data-go="stepApply" aria-label="게스트 화면으로">‹</button><h1>관리자</h1><button class="txt" type="button" id="logoutBtn">로그아웃</button></nav>
     <div class="seg" role="tablist">
       <button role="tab" aria-selected="true" data-tab="tabList">명단</button>
+      <button role="tab" aria-selected="false" data-tab="tabMem">회원</button>
       <button role="tab" aria-selected="false" data-tab="tabStats">통계</button>
       <button role="tab" aria-selected="false" data-tab="tabDep">입금 알림</button>
       <button role="tab" aria-selected="false" data-tab="tabSet">설정</button>
@@ -447,14 +537,66 @@
         <button type="button" aria-pressed="true" data-f="">전체</button>
         <button type="button" aria-pressed="false" data-f="입금대기">입금대기</button>
         <button type="button" aria-pressed="false" data-f="신청완료">입금완료</button>
-        <button type="button" class="add-btn" id="addManual">+ 수기 입력</button>
+        <button type="button" class="add-btn ed" id="addManual">+ 수기 입력</button>
       </div>
       <ul class="list" id="gList"></ul>
       <div class="pager"><button type="button" id="gPrev" aria-label="이전 페이지">‹</button><span class="num" id="gPage">1 / 1</span><button type="button" id="gNext" aria-label="다음 페이지">›</button></div>
     </div>
 
     <!-- 통계 -->
+    <!-- 회원·회비 -->
+    <div class="pane hidden" id="tabMem">
+      <div class="seg sm" role="tablist" style="margin-bottom:10px">
+        <button role="tab" aria-selected="true" data-mv="list">회원 목록</button>
+        <button role="tab" aria-selected="false" data-mv="board">회비 현황</button>
+      </div>
+      <div class="mv" id="mvList">
+        <div class="acard yellow" style="margin-bottom:8px">
+          <span class="t"><span id="cTitle">이번 달 회비</span><span class="tag" id="cFeeTag"></span></span>
+          <span class="total" style="margin-top:6px">
+            <span class="cpaid" id="cPaid"></span>
+            <span class="big num" id="cSum">0원</span>
+          </span>
+          <span class="s" id="cCounts" style="margin-top:4px"></span>
+        </div>
+        <div class="filters" role="group" aria-label="회원 필터">
+          <button type="button" aria-pressed="true" data-cf="">전체</button>
+          <button type="button" aria-pressed="false" data-cf="임원">임원</button>
+          <button type="button" aria-pressed="false" data-cf="미납">미납</button>
+          <button type="button" aria-pressed="false" data-cf="병가·출장">병가·출장</button>
+          <button type="button" aria-pressed="false" data-cf="탈퇴">탈퇴</button>
+        </div>
+        <ul class="list" id="cList"></ul>
+        <div class="cta-wrap ed" style="padding-bottom:4px"><button class="cta" type="button" id="cAddBtn">+ 회원 추가</button></div>
+      </div>
+      <div class="mv hidden" id="mvBoard">
+        <div class="datebar">
+          <button type="button" id="bPrev" aria-label="이전 반년">‹</button>
+          <label><span id="bLabel"></span></label>
+          <button type="button" id="bNext" aria-label="다음 반년">›</button>
+        </div>
+        <div class="board" id="board"></div>
+        <div class="blegend">
+          <span><i style="background:var(--green-soft)"></i>납부일</span>
+          <span><i style="background:#D3EEDD"></i>선납</span>
+          <span><i style="background:#E6EEFB"></i>병가</span>
+          <span><i style="background:#FFF0DC"></i>출장</span>
+          <span><i style="box-shadow:inset 0 0 0 1.5px var(--coral)"></i>미납</span>
+        </div>
+        <div class="bfoot" id="bFoot"></div>
+        <div class="bact">
+          <button class="cta dark" type="button" id="xlsBtn">엑셀 다운로드</button>
+          <button class="cta ed super-only" type="button" id="cImportBtn">엑셀 가져오기</button>
+        </div>
+        <input type="file" id="cFile" class="hidden" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="회비 엑셀 파일">
+      </div>
+    </div>
+
     <div class="pane hidden" id="tabStats">
+      <div class="filters" role="group" aria-label="통계 종류" style="margin:0 0 8px">
+        <button type="button" aria-pressed="true" data-sk="">게스트비</button>
+        <button type="button" aria-pressed="false" data-sk="club">회비</button>
+      </div>
       <div class="seg sm" role="tablist" style="margin-bottom:10px">
         <button role="tab" aria-selected="true" data-mode="day">일별</button>
         <button role="tab" aria-selected="false" data-mode="month">월별</button>
@@ -467,7 +609,7 @@
       <div class="acard green" style="margin-bottom:8px">
         <span class="t" id="sTitle"></span>
         <span class="total">
-          <span class="split"><span>게스트 <b class="num" id="sCount">0</b>명</span></span>
+          <span class="split"><span id="sCountWrap">게스트 <b class="num" id="sCount">0</b>명</span></span>
           <span class="big num" id="sSum">0원</span>
         </span>
       </div>
@@ -522,6 +664,7 @@
           <div><p class="lbl">게스트비(원)</p><input name="fee" inputmode="numeric"></div>
           <div><p class="lbl">게스트 정원</p><input name="max_guests" inputmode="numeric"></div>
         </div>
+        <p class="lbl">클럽 월 회비(원) · 입금 금액 ÷ 회비 = 개월 수</p><input name="club_fee" inputmode="numeric">
       </form>
       <form class="form field hidden" id="setBank" novalidate>
         <p class="lbl">은행</p>
@@ -557,7 +700,7 @@
         <ul class="list" id="uList"></ul>
         <div class="pager"><button type="button" id="uPrev" aria-label="이전 페이지">‹</button><span class="num" id="uPage">1 / 1</span><button type="button" id="uNext" aria-label="다음 페이지">›</button></div>
       </div>
-      <div class="cta-wrap" id="saveWrap"><button class="cta" id="saveBtn" type="button">저장</button></div>
+      <div class="cta-wrap ed" id="saveWrap"><button class="cta" id="saveBtn" type="button">저장</button></div>
     </div>
   </section>
 </div>
@@ -621,6 +764,89 @@
     <div style="height:12px"></div>
     <button class="cta" type="button" id="mSave">명단에 추가</button>
     <button class="sheet-close" type="button" id="mClose">닫기</button>
+  </div>
+</div>
+
+<!-- 회원 추가·수정 -->
+<div class="sheet-bg hidden" id="memSheet">
+  <div class="sheet field" role="dialog" aria-modal="true" aria-labelledby="msTitle">
+    <div class="sheet-scroll">
+      <h3 id="msTitle">회원 정보</h3>
+      <p class="sheet-sub" id="msSub"></p>
+      <div class="mform">
+        <label class="mrow"><span>이름</span><input id="msName" maxlength="20" placeholder="이름"></label>
+        <div class="mrow"><span>임원 역할</span>
+          <div class="chips2" id="msRoles"></div>
+          <div class="mrow-in hidden" id="msRoleAdd"><input id="msRoleNew" maxlength="10" placeholder="새 역할 이름 (예: 경기이사)" aria-label="새 역할 이름"><button type="button" class="btn-sm dk" id="msRoleSave">추가</button></div>
+        </div>
+        <div class="mrow"><span>상태</span>
+          <div class="stgrid" id="msStatus">
+            <button type="button" class="chip" data-st="활동">활동</button>
+            <button type="button" class="chip" data-st="병가">병가</button>
+            <button type="button" class="chip" data-st="출장">출장</button>
+            <button type="button" class="chip" data-st="탈퇴">탈퇴</button>
+          </div>
+        </div>
+        <label class="sw"><span><b>회비 면제</b><small>총무·재무처럼 회비를 안 내는 회원</small></span><input type="checkbox" id="msExempt"></label>
+      </div>
+    </div>
+    <button class="cta" type="button" id="msSave" style="margin-top:12px">저장</button>
+    <div class="sheet-row"><button class="sheet-close danger" type="button" id="msDel">회원 삭제</button><button class="sheet-close" type="button" id="msClose">닫기</button></div>
+  </div>
+</div>
+
+<!-- 회비 현황 칸 하나 바꾸기 -->
+<div class="sheet-bg hidden" id="cSheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="csTitle">
+    <h3 id="csTitle"></h3>
+    <p class="sheet-sub" id="csSub"></p>
+    <div class="stgrid five" id="csKinds">
+      <button type="button" class="chip" data-k="납부">납부</button>
+      <button type="button" class="chip" data-k="병가">병가</button>
+      <button type="button" class="chip" data-k="출장">출장</button>
+      <button type="button" class="chip" data-k="탈퇴">탈퇴</button>
+      <button type="button" class="chip" data-k="">미납</button>
+    </div>
+    <div class="mdate" id="csDateRow" style="margin-top:8px"><span>납부일</span><button type="button" id="csPrev" aria-label="전날">‹</button><b id="csDate"></b><button type="button" id="csNext" aria-label="다음날">›</button></div>
+    <button class="cta" type="button" id="csSave" style="margin-top:12px">저장</button>
+    <button class="sheet-close" type="button" id="csClose">닫기</button>
+  </div>
+</div>
+
+<!-- 입금 알림 → 회비 처리 -->
+<div class="sheet-bg hidden" id="fSheet">
+  <div class="sheet field" role="dialog" aria-modal="true" aria-labelledby="fsTitle">
+    <div class="sheet-scroll">
+      <h3 id="fsTitle">회비로 처리</h3>
+      <p class="sheet-sub" id="fsSub"></p>
+      <p class="lbl2">누구 회비인가요? <small>여러 명 고를 수 있어요</small></p>
+      <div class="cands" id="fsCands"></div>
+      <button type="button" class="chip wide" id="fsPickOpen">다른 회원에서 고르기 ›</button>
+      <div class="hidden" id="fsPickWrap">
+        <input id="fsSearch" placeholder="이름 검색" aria-label="회원 이름 검색" style="margin:6px 0">
+        <div class="cands" id="fsPickList"></div>
+      </div>
+      <p class="fs-info" id="fsInfo"></p>
+      <div id="fsMonthWrap">
+        <div class="ylbl"><span class="lbl2">몇 월부터?</span><span class="ynav"><button type="button" id="fsYPrev" aria-label="이전 해">‹</button><b id="fsYear"></b><button type="button" id="fsYNext" aria-label="다음 해">›</button></span></div>
+        <div class="mgrid" id="fsMonths"></div>
+        <p class="sheet-sub" style="margin:6px 2px 0">초록 칸은 이미 낸 달 · 시작 달을 누르면 그 달부터 칠해져요</p>
+      </div>
+      <ul class="fs-multi" id="fsMulti"></ul>
+    </div>
+    <button class="cta" type="button" id="fsSave" style="margin-top:12px">회비로 처리</button>
+    <div class="sheet-row"><button class="sheet-close" type="button" id="fsGuest">게스트비로 처리하기</button><button class="sheet-close" type="button" id="fsClose">닫기</button></div>
+  </div>
+</div>
+
+<!-- 회비 현황 엑셀 다운로드: 연도 고르기 -->
+<div class="sheet-bg hidden" id="xSheet">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="xTitle">
+    <h3 id="xTitle">엑셀 다운로드</h3>
+    <p class="sheet-sub">몇 년도 회비 현황을 받을까요? (1년 단위)</p>
+    <div class="mdate"><span>연도</span><button type="button" id="xPrev" aria-label="이전 해">‹</button><b id="xYear"></b><button type="button" id="xNext" aria-label="다음 해">›</button></div>
+    <button class="cta" type="button" id="xGo" style="margin-top:12px">다운로드</button>
+    <button class="sheet-close" type="button" id="xClose">닫기</button>
   </div>
 </div>
 
@@ -900,7 +1126,7 @@ $("cancelBtn").addEventListener("click", async () => {
 /* ───────── 관리자 ───────── */
 let adminTimer = null;
 const L = { date: "", page: 1, filter: "" };
-const ST = { mode: "day", month: "", year: "", page: 1, rows: [] };
+const ST = { mode: "day", month: "", year: "", page: 1, rows: [], kind: "" };
 const STATS_PER_PAGE = 7;
 
 function stopAdmin(){ clearInterval(adminTimer); }
@@ -967,6 +1193,10 @@ function openAdmin(){
   show("admin");
   // 관리자 관리는 슈퍼 관리자만
   $("setUsersTab").classList.toggle("hidden", !ME?.super);
+  // 보기 전용 관리자: 수정 버튼을 숨김 (서버도 막음)
+  $("admin").classList.toggle("viewer", !!ME?.viewer);
+  $("admin").querySelector(".nav h1").textContent = ME?.viewer ? "관리자 · 보기 전용" : "관리자";
+  document.querySelectorAll(".super-only").forEach(el => el.classList.toggle("hidden", !ME?.super));
   if (!ME?.super && setForm === "setUsers") pickSet("setMeet");
   $("accHint").textContent = ME?.env ? "슈퍼 관리자 비밀번호는 Railway 환경변수(ADMIN_PW)에서 바꿔요" : "";
   L.date = S.meet_date || new Date().toLocaleDateString("sv-SE");
@@ -982,7 +1212,8 @@ function openAdmin(){
 }
 function selectTab(id){
   document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === id));
-  ["tabList","tabStats","tabDep","tabSet"].forEach(t => $(t).classList.toggle("hidden", t !== id));
+  ["tabList","tabMem","tabStats","tabDep","tabSet"].forEach(t => $(t).classList.toggle("hidden", t !== id));
+  if (id === "tabMem") loadClub();
   if (id === "tabList") loadGuests();
   if (id === "tabStats") loadStats();
   if (id === "tabDep") { DP.page = 1; loadDeposits(); }
@@ -1024,7 +1255,7 @@ async function loadGuests(){
         <span class="ava ${g.gender === "남" ? "m" : "f"}">${esc(g.name.slice(0,1))}</span>
         <span class="who"><b>${esc(g.name)}</b>${g.pay_name !== g.name ? `<em>입금자명 ${esc(g.pay_name)}</em>` : ""}${g.manual ? `<em>수기</em>` : ""}
           <span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${when(g.created_at, r.date)} 신청${g.paid_at ? `<b class="paid-at">${mdhm(g.paid_at)} 입금</b>` : ""}</span></span>
-        <span class="act">
+        <span class="act ed">
           ${g.status === "신청완료"
             ? `<button class="btn-sm ok" data-undo="${g.id}" title="누르면 입금대기로 되돌려요">입금완료</button>`
             : `<button class="btn-sm y" data-paid="${g.id}">입금확인</button>`}
@@ -1095,6 +1326,320 @@ $("mSave").addEventListener("click", async () => {
   finally { $("mSave").disabled = false; }
 });
 
+/* ── 회원·회비 ──
+   회원 목록(이번 달 회비 상태) / 회비 현황(반년 표) / 입금 알림 → 회비 처리 / 엑셀 가져오기·다운로드 */
+const C = { members: [], fmap: {}, roles: [], fee: 25000, ym: "", today: "", filter: "", half: "" };
+const ymAdd = (ym, n) => { const [y, m] = ym.split("-").map(Number); const t = y * 12 + (m - 1) + n; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, "0")}`; };
+const ymLab = (ym, withYear) => (withYear || (C.ym && ym.slice(0, 4) !== C.ym.slice(0, 4)) ? `${ym.slice(2, 4)}년 ` : "") + `${+ym.slice(5)}월`;
+const memberOf = id => C.members.find(m => m.id === id);
+async function loadClub(){
+  try {
+    const r = await api("/api/admin/club");
+    Object.assign(C, { members: r.members, roles: r.roles, fee: r.fee, ym: r.ym, today: r.today, fmap: {} });
+    for (const f of r.fees) (C.fmap[f.m] ||= {})[f.ym] = f;
+    if (!C.half) C.half = r.ym.slice(0, 4) + (+r.ym.slice(5) <= 6 ? "-1" : "-2");
+    renderClub();
+  } catch (e) { adminFail(e); }
+}
+function leftYm(m){ let l = null; for (const [ym, r] of Object.entries(C.fmap[m.id] || {})) if (r.kind === "탈퇴" && (!l || ym < l)) l = ym; return l; }
+function lastPaid(m){ let l = null; for (const [ym, r] of Object.entries(C.fmap[m.id] || {})) if (r.kind === "납부" && (!l || ym > l)) l = ym; return l; }
+function statusSince(m){ const rows = C.fmap[m.id] || {}; let ym = C.ym; while (rows[ymAdd(ym, -1)]?.kind === m.status) ym = ymAdd(ym, -1); return ym; }
+// 아직 안 낸 가장 이른 달 (마지막으로 낸 달 다음 달, 지난 병가·출장 달은 건너뜀)
+function nextDue(m){
+  const rows = C.fmap[m.id] || {}, lp = lastPaid(m);
+  if (!lp) return C.ym;
+  let ym = ymAdd(lp, 1);
+  while (ym < C.ym && ["병가", "출장"].includes(rows[ym]?.kind)) ym = ymAdd(ym, 1);
+  return ym;
+}
+// 한 칸의 상태 → { k: paid|pre|unpaid|exempt|병가|출장|탈퇴|none|future, t: 보이는 글자 }
+function cellOf(m, ym){
+  const r = (C.fmap[m.id] || {})[ym];
+  if (r) {
+    if (r.kind !== "납부") return { k: r.kind, t: r.kind };
+    const p = r.paid_on || "";
+    return { k: p && p.slice(0, 7) < ym ? "pre" : "paid", t: p ? `${+p.slice(5, 7)}/${+p.slice(8, 10)}` : "납부" };
+  }
+  const left = leftYm(m);
+  if ((left && ym > left) || ym < (m.since || "0000-00")) return { k: "none", t: "" };
+  if (m.exempt) return { k: "exempt", t: "면제" };
+  if (ym > C.ym) return { k: "future", t: "" };
+  if (ym === C.ym && (m.status === "병가" || m.status === "출장")) return { k: m.status, t: m.status };
+  return { k: "unpaid", t: "미납" };
+}
+const BADGE = { paid: ["b-paid", "납부"], pre: ["b-paid", "선납"], unpaid: ["b-unpaid", "미납"], exempt: ["b-gray", "면제"],
+  병가: ["b-sick", "병가"], 출장: ["b-trip", "출장"], 탈퇴: ["b-gray", "탈퇴"], none: ["b-gray", "-"], future: ["b-gray", "-"] };
+function renderClub(){
+  const ms = C.members, now = C.ym;
+  const st = new Map(ms.map(m => [m.id, cellOf(m, now)]));
+  const target = ms.filter(m => m.status !== "탈퇴" && !m.exempt && !["병가", "출장", "none"].includes(st.get(m.id).k));
+  const paid = target.filter(m => ["paid", "pre"].includes(st.get(m.id).k));
+  const sum = ms.reduce((s, m) => { const r = (C.fmap[m.id] || {})[now]; return s + (r?.kind === "납부" ? (r.amount || C.fee) : 0); }, 0);
+  const cnt = s => ms.filter(m => m.status === s).length;
+  $("cTitle").textContent = `${+now.slice(5)}월 회비`;
+  $("cFeeTag").textContent = `1인 ${won(C.fee)}`;
+  $("cPaid").innerHTML = `납부 <b class="num">${paid.length}</b> / ${target.length}명`;
+  $("cSum").textContent = won(sum);
+  $("cCounts").textContent = `활동 ${cnt("활동")} · 병가 ${cnt("병가")} · 출장 ${cnt("출장")} · 탈퇴 ${cnt("탈퇴")}`;
+  const f = C.filter, ul = $("cList");
+  if (!ms.length) {
+    ul.innerHTML = `<li class="empty"><div><b>아직 회원이 없어요</b>${ME?.super ? "회비 엑셀로 한 번에 가져오거나 한 명씩 추가해요" : "회원을 추가해주세요"}
+      ${ME?.super ? `<br><button class="btn-sm y ed" type="button" data-import="1" style="margin-top:12px">엑셀로 가져오기</button>` : ""}</div></li>`;
+    return renderBoard();
+  }
+  const list = ms.filter(m => f === "탈퇴" ? m.status === "탈퇴" : m.status !== "탈퇴" && (!f
+    || (f === "임원" && m.role) || (f === "미납" && st.get(m.id).k === "unpaid") || (f === "병가·출장" && ["병가", "출장"].includes(m.status))));
+  ul.innerHTML = list.length ? list.map(m => {
+    const c = st.get(m.id), [cls, txt] = BADGE[c.k] || ["b-gray", c.t], lp = lastPaid(m);
+    const sub = m.status === "탈퇴" ? `${ymLab(leftYm(m) || now)} 탈퇴`
+      : m.status !== "활동" ? `${ymLab(statusSince(m))}부터 ${m.status}`
+      : m.exempt ? "회비 면제" : lp ? `${ymLab(lp)}까지 납부` : "납부 기록 없음";
+    return `<li class="item mem${m.status === "탈퇴" ? " left" : ""}" data-mid="${m.id}">
+      <span class="ava">${esc(m.name.slice(0, 1))}</span>
+      <span class="who"><b>${esc(m.name)}</b>${m.role ? `<i class="role">${esc(m.role)}</i>` : ""}<span>${sub}</span></span>
+      <span class="mbadge ${cls}">${txt}</span>
+    </li>`;
+  }).join("") : `<li class="empty"><div><b>해당하는 회원이 없어요</b></div></li>`;
+  renderBoard();
+}
+function yearSum(y){
+  let s = 0;
+  for (const rows of Object.values(C.fmap)) for (const [ym, r] of Object.entries(rows)) if (r.kind === "납부" && (r.paid_on || ym).startsWith(y)) s += r.amount || C.fee;
+  return s;
+}
+function renderBoard(){
+  if (!C.half) return;
+  const [y, h] = C.half.split("-"), start = `${y}-${h === "1" ? "01" : "07"}`;
+  const yms = Array.from({ length: 6 }, (_, i) => ymAdd(start, i)), end = yms[5];
+  $("bLabel").textContent = `${y}년 ${h === "1" ? "상반기 (1~6월)" : "하반기 (7~12월)"}`;
+  const ms = C.members.filter(m => { const l = leftYm(m); return !(l && l < start) && (m.since || start) <= end; });
+  const head = `<div class="brow bhead"><span class="bn">이름</span>${yms.map(ym => `<span${ym === C.ym ? ' class="cur"' : ""}>${+ym.slice(5)}월</span>`).join("")}</div>`;
+  $("board").innerHTML = head + (ms.length ? ms.map(m => `<div class="brow${m.status === "탈퇴" ? " left" : ""}">
+    <span class="bn"><b>${esc(m.name)}</b>${m.role ? `<i>${esc(m.role)}</i>` : ""}</span>
+    ${yms.map(ym => { const c = cellOf(m, ym);
+      return `<button type="button" class="bc c-${c.k}" data-bm="${m.id}" data-ym="${ym}" aria-label="${esc(m.name)} ${+ym.slice(5)}월 ${c.k === "pre" ? c.t + " 선납" : c.t || "비어 있음"}">${c.k === "pre" ? `${c.t}<small>선납</small>` : c.t || (c.k === "future" ? "·" : "")}</button>`; }).join("")}
+  </div>`).join("") : `<p class="empty" style="padding:40px 0">이 기간에 회원이 없어요</p>`);
+  const unpaid = C.members.filter(m => m.status !== "탈퇴" && cellOf(m, C.ym).k === "unpaid").length;
+  $("bFoot").innerHTML = `<span>${+C.ym.slice(5)}월 미납 <b class="coral">${unpaid}명</b></span><span>${y}년 걷힌 회비 <b>${won(yearSum(y))}</b></span>`;
+}
+document.querySelectorAll("[data-mv]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-mv]").forEach(x => x.setAttribute("aria-selected", x === b));
+  $("mvList").classList.toggle("hidden", b.dataset.mv !== "list");
+  $("mvBoard").classList.toggle("hidden", b.dataset.mv !== "board");
+}));
+document.querySelectorAll("[data-cf]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-cf]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  C.filter = b.dataset.cf; renderClub();
+}));
+const halfAdd = n => { const [y, h] = C.half.split("-").map(Number); const t = y * 2 + (h - 1) + n; C.half = `${Math.floor(t / 2)}-${t % 2 + 1}`; renderBoard(); };
+$("bPrev").addEventListener("click", () => halfAdd(-1));
+$("bNext").addEventListener("click", () => halfAdd(1));
+$("cList").addEventListener("click", e => {
+  if (e.target.closest("[data-import]")) return pickImport();
+  const li = e.target.closest("[data-mid]"); if (!li || ME?.viewer) return;
+  openMember(memberOf(+li.dataset.mid));
+});
+$("board").addEventListener("click", e => {
+  const b = e.target.closest("[data-bm]"); if (!b || ME?.viewer) return;
+  openCell(memberOf(+b.dataset.bm), b.dataset.ym);
+});
+// 시트 바깥(어두운 곳)·닫기 버튼으로 닫기
+for (const [sheet, close] of [["memSheet", "msClose"], ["cSheet", "csClose"], ["fSheet", "fsClose"], ["xSheet", "xClose"]]) {
+  $(sheet).addEventListener("click", e => { if (e.target.id === sheet) $(sheet).classList.add("hidden"); });
+  $(close).addEventListener("click", () => $(sheet).classList.add("hidden"));
+}
+
+/* 회원 추가·수정 */
+const MS = { id: null, role: "", status: "활동", exempt: false };
+function openMember(m){
+  Object.assign(MS, { id: m ? m.id : null, role: m ? m.role : "", status: m ? m.status : "활동", exempt: !!m?.exempt });
+  $("msTitle").textContent = m ? "회원 정보" : "회원 추가";
+  $("msSub").textContent = m ? (m.since ? `${ymLab(m.since, true)}부터 회원` : "") : "추가하면 이번 달부터 회비 현황에 나와요";
+  $("msName").value = m ? m.name : "";
+  $("msRoleNew").value = ""; $("msRoleAdd").classList.add("hidden");
+  $("msDel").classList.toggle("hidden", !m);
+  if ($("msDel").classList.contains("arm")) { $("msDel").classList.remove("arm"); $("msDel").textContent = "회원 삭제"; }
+  renderMs(); $("memSheet").classList.remove("hidden");
+}
+function renderMs(){
+  $("msRoles").innerHTML = ["", ...C.roles].map(r => `<button type="button" class="chip${MS.role === r ? " on" : ""}" data-role="${esc(r)}">${r ? esc(r) : "없음"}</button>`).join("")
+    + `<button type="button" class="chip add" data-roleadd="1">+ 역할 추가</button>`;
+  document.querySelectorAll("#msStatus [data-st]").forEach(b => b.classList.toggle("on", b.dataset.st === MS.status));
+  $("msExempt").checked = MS.exempt;
+}
+$("cAddBtn").addEventListener("click", () => openMember(null));
+$("msRoles").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.roleadd) { $("msRoleAdd").classList.toggle("hidden"); $("msRoleNew").focus(); return; }
+  MS.role = b.dataset.role; renderMs();
+});
+$("msRoleSave").addEventListener("click", async () => {
+  const name = $("msRoleNew").value.trim(); if (!name) return toast("역할 이름을 입력해주세요");
+  try { await api("/api/admin/roles/add", { name }); C.roles.push(name.replace(/\s+/g, "")); MS.role = name.replace(/\s+/g, ""); $("msRoleAdd").classList.add("hidden"); $("msRoleNew").value = ""; renderMs(); toast(`'${MS.role}' 역할을 만들었어요`); }
+  catch (e) { adminFail(e); }
+});
+$("msStatus").addEventListener("click", e => { const b = e.target.closest("[data-st]"); if (b) { MS.status = b.dataset.st; renderMs(); } });
+$("msExempt").addEventListener("change", e => { MS.exempt = e.target.checked; });
+$("msSave").addEventListener("click", async () => {
+  const name = $("msName").value.trim(); if (!name) return toast("이름을 입력해주세요");
+  try {
+    await api("/api/admin/members/save", { id: MS.id, name, role: MS.role, status: MS.status, exempt: MS.exempt });
+    $("memSheet").classList.add("hidden"); toast(MS.id ? "저장했어요" : `${name} 회원을 추가했어요`); loadClub();
+  } catch (e) { adminFail(e); }
+});
+$("msDel").addEventListener("click", async () => {
+  const b = $("msDel");
+  if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "회비 기록까지 지워요. 한 번 더"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "회원 삭제"; }, 2500); return; }
+  try { await api("/api/admin/members/delete", { id: MS.id }); $("memSheet").classList.add("hidden"); toast("회원을 삭제했어요"); loadClub(); }
+  catch (e) { adminFail(e); }
+});
+
+/* 회비 현황 칸 하나 바꾸기 */
+const CS = { m: null, ym: "", kind: "", date: "" };
+function openCell(m, ym){
+  const r = (C.fmap[m.id] || {})[ym];
+  Object.assign(CS, { m, ym, kind: r ? r.kind : "", date: r?.paid_on || C.today });
+  $("csTitle").textContent = `${m.name} · ${ym.slice(0, 4)}년 ${+ym.slice(5)}월`;
+  $("csSub").textContent = r?.kind === "납부" && r.paid_on ? `${+r.paid_on.slice(5, 7)}/${+r.paid_on.slice(8, 10)} 납부${r.paid_on.slice(0, 7) < ym ? " (선납)" : ""}` : "이 달 회비 상태를 골라주세요";
+  renderCs(); $("cSheet").classList.remove("hidden");
+}
+function renderCs(){
+  document.querySelectorAll("#csKinds [data-k]").forEach(b => b.classList.toggle("on", b.dataset.k === CS.kind));
+  $("csDateRow").classList.toggle("hidden", CS.kind !== "납부");
+  $("csDate").textContent = shortDate(CS.date);
+}
+$("csKinds").addEventListener("click", e => { const b = e.target.closest("[data-k]"); if (b) { CS.kind = b.dataset.k; renderCs(); } });
+$("csPrev").addEventListener("click", () => { CS.date = addDays(CS.date, -1); renderCs(); });
+$("csNext").addEventListener("click", () => { CS.date = addDays(CS.date, 1); renderCs(); });
+$("csSave").addEventListener("click", async () => {
+  try {
+    await api("/api/admin/fees/set", { member_id: CS.m.id, ym: CS.ym, kind: CS.kind, paid_on: CS.date });
+    $("cSheet").classList.add("hidden"); toast(`${CS.m.name} ${+CS.ym.slice(5)}월을 ${({ 납부: "납부로", 병가: "병가로", 출장: "출장으로", 탈퇴: "탈퇴로" })[CS.kind] || "미납으로"}바꿨어요`); loadClub();
+  } catch (e) { adminFail(e); }
+});
+
+/* 입금 알림 → 회비 처리 */
+const FS = { dep: null, cands: [], sel: [], months: 0, start: "", year: "", pick: false };
+// 입금자 표시 안에 이름(성 포함)이 그대로 있으면 '이름·성 일치', 성 빼고 이름만 있으면 '이름만 일치'
+function suggest(sender){
+  const s = (sender || "").replace(/\s+/g, ""), act = C.members.filter(m => m.status !== "탈퇴");
+  const full = act.filter(m => s.includes(m.name));
+  const given = act.filter(m => !full.includes(m) && m.name.length >= 3 && s.includes(m.name.slice(1)));
+  return [...full.map(m => [m, "full"]), ...given.map(m => [m, "given"])];
+}
+async function openFee(dep){
+  if (!C.ym) await loadClub();
+  FS.dep = dep; FS.cands = suggest(dep.sender); FS.pick = false;
+  FS.sel = FS.cands.filter(([, how]) => how === "full").map(([m]) => m.id);
+  FS.months = Math.floor((dep.amount || 0) / C.fee);
+  $("fsSearch").value = "";
+  $("fsSub").textContent = `입금 ${+dep.received_at.slice(5, 7)}/${+dep.received_at.slice(8, 10)} ${dep.received_at.slice(11, 16)} · ${dep.sender || "-"} ${won(dep.amount)}`;
+  setFeeStart(); renderFs(); $("fSheet").classList.remove("hidden");
+}
+function setFeeStart(){ const m = FS.sel.length === 1 ? memberOf(FS.sel[0]) : null; FS.start = m ? nextDue(m) : C.ym; FS.year = FS.start.slice(0, 4); }
+const feePer = () => { const n = FS.sel.length; return n && FS.months % n === 0 ? FS.months / n : 0; };
+function candHtml(m, how){
+  const lp = lastPaid(m);
+  return `<button type="button" class="cand${FS.sel.includes(m.id) ? " on" : ""}" data-cid="${m.id}"><span class="ck" aria-hidden="true"></span>
+    <span class="cn"><b>${esc(m.name)}${m.role ? `<i class="role">${esc(m.role)}</i>` : ""}</b><span>${lp ? `${ymLab(lp)}까지 납부` : "납부 기록 없음"}${m.status !== "활동" ? ` · ${m.status}` : ""}</span></span>
+    ${how ? `<span class="how ${how}">${how === "full" ? "이름·성 일치" : "이름만 일치"}</span>` : ""}</button>`;
+}
+function renderFs(){
+  const n = FS.sel.length, per = feePer(), amt = FS.dep.amount || 0, rem = amt % C.fee;
+  $("fsCands").innerHTML = FS.cands.length ? FS.cands.map(([m, how]) => candHtml(m, how)).join("")
+    : `<p class="sheet-sub" style="margin:0 2px">입금자 이름과 맞는 회원이 없어요. 아래에서 골라주세요</p>`;
+  $("fsPickWrap").classList.toggle("hidden", !FS.pick);
+  if (FS.pick) {
+    const q = $("fsSearch").value.replace(/\s+/g, "");
+    $("fsPickList").innerHTML = C.members.filter(m => m.status !== "탈퇴" && (!q || m.name.includes(q))).slice(0, 40).map(m => candHtml(m, "")).join("");
+  }
+  let info = `${won(amt)} = ${FS.months}개월분`, bad = false;
+  if (rem || !FS.months) { info = `${won(amt)}은 회비 ${won(C.fee)}로 나누어떨어지지 않아요`; bad = true; }
+  else if (n > 1) { info += per ? ` · ${n}명 × ${per}개월` : ` · ${n}명이 똑같이 나눌 수 없어요`; bad = !per; }
+  $("fsInfo").textContent = info; $("fsInfo").classList.toggle("bad", bad);
+  const one = n === 1 && per > 0 && !rem;
+  $("fsMonthWrap").classList.toggle("hidden", !one);
+  $("fsMulti").innerHTML = "";
+  if (one) {
+    const m = memberOf(FS.sel[0]), rows = C.fmap[m.id] || {}, last = ymAdd(FS.start, per - 1);
+    const range = new Set(Array.from({ length: per }, (_, i) => ymAdd(FS.start, i)));
+    $("fsYear").textContent = `${FS.year}년`;
+    $("fsMonths").innerHTML = Array.from({ length: 12 }, (_, i) => {
+      const ym = `${FS.year}-${String(i + 1).padStart(2, "0")}`, paid = rows[ym]?.kind === "납부";
+      return `<button type="button" class="mchip${paid ? " paid" : ym === FS.start ? " start" : range.has(ym) ? " in" : ""}" data-fym="${ym}"${paid ? " disabled" : ""}>${i + 1}월</button>`;
+    }).join("");
+    $("fsSave").textContent = per === 1 ? `${m.name} · ${ymLab(FS.start)} 회비로 처리` : `${m.name} · ${ymLab(FS.start)}~${ymLab(last)} ${per}개월 처리`;
+  } else if (n > 1 && per && !rem) {
+    $("fsMulti").innerHTML = FS.sel.map(id => { const m = memberOf(id), s = nextDue(m); return `<li><b>${esc(m.name)}</b> · ${ymLab(s)}${per > 1 ? `~${ymLab(ymAdd(s, per - 1))}` : ""}</li>`; }).join("");
+    $("fsSave").textContent = `${n}명 각 ${per}개월 처리`;
+  } else $("fsSave").textContent = n ? "회비로 처리" : "회원을 골라주세요";
+  $("fsSave").disabled = !n || !per || !!rem;
+}
+function toggleCand(e){
+  const b = e.target.closest("[data-cid]"); if (!b) return;
+  const id = +b.dataset.cid;
+  FS.sel = FS.sel.includes(id) ? FS.sel.filter(x => x !== id) : [...FS.sel, id];
+  if (!FS.cands.some(([m]) => m.id === id)) { FS.cands.push([memberOf(id), ""]); FS.pick = false; }
+  setFeeStart(); renderFs();
+}
+$("fsCands").addEventListener("click", toggleCand);
+$("fsPickList").addEventListener("click", toggleCand);
+$("fsPickOpen").addEventListener("click", () => { FS.pick = !FS.pick; renderFs(); if (FS.pick) $("fsSearch").focus(); });
+$("fsSearch").addEventListener("input", renderFs);
+$("fsMonths").addEventListener("click", e => { const b = e.target.closest("[data-fym]"); if (b && !b.disabled) { FS.start = b.dataset.fym; renderFs(); } });
+$("fsYPrev").addEventListener("click", () => { FS.year = String(+FS.year - 1); renderFs(); });
+$("fsYNext").addEventListener("click", () => { FS.year = String(+FS.year + 1); renderFs(); });
+$("fsGuest").addEventListener("click", () => { $("fSheet").classList.add("hidden"); openManual(FS.dep); });
+$("fsSave").addEventListener("click", async () => {
+  const per = feePer(), one = FS.sel.length === 1;
+  const items = FS.sel.map(id => ({ member_id: id, start: one ? FS.start : nextDue(memberOf(id)), months: per }));
+  $("fsSave").disabled = true;
+  try {
+    const r = await api("/api/admin/fees/pay", { deposit_id: FS.dep.id, items });
+    $("fSheet").classList.add("hidden"); toast(`회비 처리: ${r.note}`);
+    loadDeposits(); loadClub();
+  } catch (e) { adminFail(e); $("fsSave").disabled = false; }
+});
+
+/* 엑셀 가져오기 (슈퍼 관리자, 회원·회비를 엑셀 내용으로 바꿈) */
+function pickImport(){
+  const b = $("cImportBtn");
+  if (C.members.length && !b.classList.contains("arm")) {
+    b.classList.add("arm"); b.textContent = "지금 회원·회비를 바꿔요. 한 번 더";
+    setTimeout(() => { b.classList.remove("arm"); b.textContent = "엑셀 가져오기"; }, 3000);
+    return;
+  }
+  b.classList.remove("arm"); b.textContent = "엑셀 가져오기";
+  $("cFile").click();
+}
+$("cImportBtn").addEventListener("click", pickImport);
+$("cFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  toast("엑셀을 읽는 중이에요…");
+  try {
+    const r = await fetch("/api/admin/club/import", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: f });
+    const j = await r.json().catch(() => ({ error: "서버 응답을 읽지 못했어요" }));
+    if (!r.ok) { const err = new Error(j.error); err.status = r.status; throw err; }
+    toast(`회원 ${j.members}명(활동 ${j.active}명) · 회비 기록 ${j.fees}건 가져왔어요`); loadClub();
+  } catch (err) { adminFail(err); }
+});
+
+/* 엑셀 다운로드: 연도 골라서 1년치 */
+let xYear = "";
+$("xlsBtn").addEventListener("click", () => { xYear = C.half ? C.half.slice(0, 4) : new Date().getFullYear() + ""; $("xYear").textContent = `${xYear}년`; $("xSheet").classList.remove("hidden"); });
+$("xPrev").addEventListener("click", () => { xYear = String(+xYear - 1); $("xYear").textContent = `${xYear}년`; });
+$("xNext").addEventListener("click", () => { xYear = String(+xYear + 1); $("xYear").textContent = `${xYear}년`; });
+$("xGo").addEventListener("click", async () => {
+  try {
+    const r = await fetch(`/api/admin/club/export?year=${xYear}`);
+    if (!r.ok) { const j = await r.json().catch(() => ({})); const err = new Error(j.error || "다운로드하지 못했어요"); err.status = r.status; throw err; }
+    const url = URL.createObjectURL(await r.blob()), a = document.createElement("a");
+    a.href = url; a.download = `상도초클럽_회비현황_${xYear}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    $("xSheet").classList.add("hidden"); toast(`${xYear}년 회비 현황을 받았어요`);
+  } catch (e) { adminFail(e); }
+});
+
 /* 입금 알림 기록 */
 const DP = { page: 1, date: "" };    // date 비어 있으면 서버가 오늘로
 let DEPS = {};
@@ -1104,7 +1649,7 @@ async function loadDeposits(){
     const q = new URLSearchParams({ page: DP.page, size: Math.max(3, Math.floor(h / 59)) });
     if (DP.date) q.set("date", DP.date);
     const r = await api("/api/admin/deposits?" + q);
-    DP.page = r.page; DP.date = r.date;
+    DP.page = r.page; DP.date = r.date; DP.clubFee = r.club_fee || 25000;
     $("pvLabel").textContent = shortDate(r.date);
     $("pvInput").value = r.date;
     $("pvToday").classList.toggle("hidden", r.date !== r.today);
@@ -1118,9 +1663,12 @@ async function loadDeposits(){
       const when = day === r.today ? "오늘" : shortDate(day);
       const tag = x.guest_id
         ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} ${x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
+        : x.fee_note ? `<span class="tag-ok">회비 · ${esc(x.fee_note)}</span>`
+        : x.amount >= DP.clubFee ? `<span class="tag-fee">미정 · 눌러서 회비 처리</span>`
         : `<span class="tag-add">+ 눌러서 명단 추가</span>`;
       DEPS[x.id] = x;
-      return `<li class="item dep${x.guest_id ? "" : " can"}" ${x.guest_id ? "" : `data-dep="${x.id}"`}>
+      const done = x.guest_id || x.fee_note;
+      return `<li class="item dep${done ? "" : " can"}" ${done ? "" : `data-dep="${x.id}"`}>
         <span class="time num"><b>${hm}</b><span>${when}</span></span>
         <span class="who"><b>${esc(x.sender || "-")}</b>${tag}</span>
         <span class="amt num">${x.amount == null ? "-" : won(x.amount)}</span>
@@ -1132,7 +1680,11 @@ async function loadDeposits(){
 // 슈퍼 관리자: 필요 없는 알림 삭제 (두 번 눌러 확인, 신청 상태는 안 바뀜)
 $("dList").addEventListener("click", async e => {
   const b = e.target.closest("[data-ddel]");
-  if (!b) { const li = e.target.closest("[data-dep]"); if (li) openManual(DEPS[li.dataset.dep]); return; }
+  if (!b) {
+    const li = e.target.closest("[data-dep]"); if (!li || ME?.viewer) return;
+    const x = DEPS[li.dataset.dep];
+    return x.amount >= DP.clubFee ? openFee(x) : openManual(x);   // 회비 금액 이상이면 회비, 아니면 게스트비
+  }
   if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "삭제"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "✕"; }, 2500); return; }
   try { await api("/api/admin/deposits/delete", { id: +b.dataset.ddel }); toast("알림을 삭제했어요"); loadDeposits(); }
   catch (err) { adminFail(err); }
@@ -1147,12 +1699,13 @@ $("dPgNext").addEventListener("click", () => { DP.page++; loadDeposits(); });
 async function loadStats(){
   try {
     const q = ST.mode === "day" ? `mode=day&month=${ST.month}` : `mode=month&year=${ST.year}`;
-    const r = await api("/api/admin/stats?" + q);
+    const r = await api(`/api/admin/stats?${q}&kind=${ST.kind}`);
     ST.rows = r.rows; ST.page = 1;
     const [y, m] = ST.month.split("-");
     $("sLabel").textContent = ST.mode === "day" ? `${y}년 ${+m}월` : `${ST.year}년`;
-    $("sTitle").textContent = ST.mode === "day" ? `${+m}월 게스트비` : `${ST.year}년 게스트비`;
-    $("sCount").textContent = r.total_count;
+    const what = ST.kind === "club" ? "회비" : "게스트비";
+    $("sTitle").textContent = ST.mode === "day" ? `${+m}월 ${what}` : `${ST.year}년 ${what}`;
+    $("sCountWrap").innerHTML = `${ST.kind === "club" ? "낸 회원" : "게스트"} <b class="num" id="sCount">${r.total_count}</b>명`;
     $("sSum").textContent = won(r.total_sum);
     renderStats();
   } catch (e) { adminFail(e); }
@@ -1170,8 +1723,12 @@ function renderStats(){
       <span class="track"><span class="fill" style="width:${Math.round(r.sum / max * 100)}%"></span></span>
       <span class="v num"><b>${won(r.sum)}</b><span>${r.count}명</span></span>
     </li>`).join("")
-    : `<li class="empty"><div><b>입금 완료된 게스트가 없어요</b>${ST.mode === "day" ? "다른 달을 골라보세요" : "다른 연도를 골라보세요"}</div></li>`;
+    : `<li class="empty"><div><b>${ST.kind === "club" ? "이 기간에 낸 회비가 없어요" : "입금 완료된 게스트가 없어요"}</b>${ST.mode === "day" ? "다른 달을 골라보세요" : "다른 연도를 골라보세요"}</div></li>`;
 }
+document.querySelectorAll("[data-sk]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-sk]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  ST.kind = b.dataset.sk; loadStats();
+}));
 document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-selected", x === b));
   ST.mode = b.dataset.mode; loadStats();
@@ -1265,6 +1822,7 @@ function renderUsers(){
       <span class="who"><b>${esc(u.id)}</b>
         <span class="${u.must_change ? "tag-no" : "tag-ok"}">${u.must_change ? "처음 비밀번호 0000" : "사용 중"}</span></span>
       <span class="act">
+        <button class="btn-sm ${u.viewer ? "v" : "ok"}" data-perm="${esc(u.id)}" data-v="${u.viewer ? 0 : 1}" title="누르면 권한이 바뀌어요">${u.viewer ? "보기만" : "수정 가능"}</button>
         <button class="btn-sm y" data-reset="${esc(u.id)}">비번 초기화</button>
         <button class="btn-x" data-udel="${esc(u.id)}" aria-label="${esc(u.id)} 삭제">✕</button>
       </span>
@@ -1287,6 +1845,10 @@ $("uList").addEventListener("click", async e => {
     } else if (b.dataset.udel) {
       if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "삭제"; setTimeout(renderUsers, 2500); return; }
       await api("/api/admin/users/delete", { id: b.dataset.udel }); toast("삭제했어요");
+    } else if (b.dataset.perm) {
+      const v = +b.dataset.v;
+      await api("/api/admin/users/perm", { id: b.dataset.perm, viewer: v });
+      toast(v ? `${b.dataset.perm}: 이제 보기만 할 수 있어요` : `${b.dataset.perm}: 이제 수정도 할 수 있어요`);
     }
     loadUsers();
   } catch (err) { adminFail(err); }
@@ -1321,7 +1883,7 @@ const monthAdd = (mo, n) => { const [y, m] = mo.split("-").map(Number); const d 
 $("calPrev").addEventListener("click", () => { CAL.month = monthAdd(CAL.month, -1); loadCal(); });
 $("calNext").addEventListener("click", () => { CAL.month = monthAdd(CAL.month, 1); loadCal(); });
 $("calDays").addEventListener("click", e => {
-  const b = e.target.closest("[data-day]"); if (!b || b.disabled) return;
+  const b = e.target.closest("[data-day]"); if (!b || b.disabled || ME?.viewer) return;
   const ds = b.dataset.day, day = CAL.days[ds], f = $("dForm").elements, D = CAL.defaults;
   const dow = new Date(ds + "T00:00:00").getDay(), weekday = dow > 0 && dow < 6;
   const v = day && !day.off ? day : { title: D.meet_title, time: D.meet_time, place: D.meet_place, fee: D.fee, max_guests: D.max_guests };

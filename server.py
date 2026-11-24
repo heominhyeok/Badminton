@@ -9,6 +9,7 @@ import hashlib, json, os, re, secrets, sqlite3, threading
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+import club
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC = os.path.join(BASE, 'public')
@@ -32,8 +33,10 @@ DEFAULT_SETTINGS = {
     'meet_date': '', 'meet_title': '정기운동', 'meet_time': '19:30–21:30', 'meet_place': '상도초등학교',
     'fee': '5000', 'max_guests': '10',
     'bank_name': '', 'account_no': '', 'holder': '', 'kakao_link': '',
+    'club_fee': '25000',          # 클럽 월 회비 (입금 금액 ÷ 이 금액 = 개월 수)
 }
 SETTING_KEYS = list(DEFAULT_SETTINGS)
+PUBLIC_KEYS = [k for k in SETTING_KEYS if k != 'club_fee']   # 게스트 화면에 보내는 설정
 LOCK = threading.Lock()
 SESSIONS = {}   # sid → {'id', 'super', 'must_change'}
 
@@ -85,6 +88,19 @@ def init_db():
             title TEXT NOT NULL, time TEXT NOT NULL, place TEXT NOT NULL,
             fee TEXT NOT NULL, max_guests TEXT NOT NULL, created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS member (     -- 클럽 회원
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL, role TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT '활동',      -- 활동 | 병가 | 출장 | 탈퇴
+            exempt INTEGER NOT NULL DEFAULT 0,        -- 1 = 회비 면제 (총무·재무 등)
+            sort INTEGER NOT NULL DEFAULT 0, since TEXT, created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS fee (        -- 회원별 월 회비 기록 (한 달에 한 줄)
+            member_id INTEGER NOT NULL, ym TEXT NOT NULL,   -- YYYY-MM
+            kind TEXT NOT NULL,                             -- 납부 | 병가 | 출장 | 탈퇴
+            paid_on TEXT, amount INTEGER, deposit_id INTEGER,
+            PRIMARY KEY (member_id, ym)
+        );
         CREATE TABLE IF NOT EXISTS push_sub (   -- 관리자 폰 알림 주소 (로그아웃해도 유지)
             endpoint TEXT PRIMARY KEY,
             p256dh TEXT NOT NULL, auth TEXT NOT NULL,
@@ -93,6 +109,10 @@ def init_db():
         ''')
         for k, v in DEFAULT_SETTINGS.items():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
+        if 'fee_note' not in [r[1] for r in con.execute('PRAGMA table_info(deposit)')]:
+            con.execute('ALTER TABLE deposit ADD COLUMN fee_note TEXT')     # 회비로 처리된 내용 ('홍길동 11월')
+        if 'viewer' not in [r[1] for r in con.execute('PRAGMA table_info(admin_user)')]:
+            con.execute('ALTER TABLE admin_user ADD COLUMN viewer INTEGER NOT NULL DEFAULT 0')   # 1 = 보기만
         if 'off' not in [r[1] for r in con.execute('PRAGMA table_info(meet_day)')]:
             con.execute('ALTER TABLE meet_day ADD COLUMN off INTEGER NOT NULL DEFAULT 0')   # 1 = 그날 쉼
         # 예전 '날짜 지정'(하루만 지정) → 캘린더에서 연 날로 옮기고 지정 값은 비움
@@ -323,6 +343,9 @@ class H(SimpleHTTPRequestHandler):
 
     def body(self):
         n = int(self.headers.get('Content-Length') or 0)
+        if self.path.startswith('/api/admin/club/import'):     # 엑셀 파일 그대로
+            if n > 10_000_000: raise ApiError('파일이 너무 커요')
+            return {'_raw': self.rfile.read(n)}
         if n > 20000:
             raise ApiError('요청이 너무 커요')
         raw = self.rfile.read(n) or b'{}'
@@ -368,8 +391,10 @@ class H(SimpleHTTPRequestHandler):
                     raise ApiError('관리자 로그인이 필요해요', 401)
                 if sess['must_change'] and p not in ('/api/admin/me', '/api/admin/logout', '/api/admin/password'):
                     raise ApiError('처음 비밀번호를 먼저 바꿔주세요', 403)
-                if (p.startswith('/api/admin/users') or p == '/api/admin/deposits/delete') and not sess['super']:
+                if (p.startswith('/api/admin/users') or p in ('/api/admin/deposits/delete', '/api/admin/club/import')) and not sess['super']:
                     raise ApiError('슈퍼 관리자만 할 수 있어요', 403)
+                if sess.get('viewer') and method == 'POST' and p not in VIEWER_OK:
+                    raise ApiError('보기 전용 관리자예요. 수정은 할 수 없어요', 403)
             handler = ROUTES.get((method, p))
             if not handler:
                 raise ApiError('없는 주소예요', 404)
@@ -383,7 +408,7 @@ class H(SimpleHTTPRequestHandler):
 # ── 게스트 API ─────────────────────────────────────
 def public_info(h, q, d):
     s = settings()
-    h.json({'settings': {k: s[k] for k in SETTING_KEYS}, 'counts': counts(s['meet_date']), 'closed': s['closed'], 'ver': APP_VER})
+    h.json({'settings': {k: s[k] for k in PUBLIC_KEYS}, 'counts': counts(s['meet_date']), 'closed': s['closed'], 'ver': APP_VER})
 
 
 def mask_name(n):
@@ -503,11 +528,15 @@ def hook_deposit(h, q, d):
         gid = match_deposit(con, sender, amount)
         if gid:
             con.execute("UPDATE guest SET status='신청완료', paid_at=? WHERE id=?", (now(), gid))
-        con.execute('INSERT INTO deposit(received_at, raw, sender, amount, guest_id) VALUES (?,?,?,?,?)',
-                    (now(), raw[:500], sender, amount, gid))
+        cur = con.execute('INSERT INTO deposit(received_at, raw, sender, amount, guest_id) VALUES (?,?,?,?,?)',
+                          (now(), raw[:500], sender, amount, gid))
+        # 게스트비로 안 맞고 회비 이상이면: 이름·금액으로 누구의 몇 월 회비인지 판단 (못 하면 '미정'으로 남김)
+        note = None if gid else auto_fee(con, cur.lastrowid, sender, amount)
     if gid: notify_paid(gid)
-    h.json({'ok': True, 'sender': sender, 'amount': amount, 'matched_guest_id': gid,
-            'result': '자동으로 입금 확인했어요' if gid else '맞는 신청이 없어서 기록만 했어요'})
+    if note: push_all('💰 회비 입금', note)
+    hook_log(f"결과 | 게스트={gid} 회비={note or '-'}")
+    h.json({'ok': True, 'sender': sender, 'amount': amount, 'matched_guest_id': gid, 'fee': note,
+            'result': '자동으로 입금 확인했어요' if gid else f'회비로 처리했어요: {note}' if note else '맞는 신청이 없어서 기록만 했어요'})
 
 
 def admin_deposits(h, q, d):
@@ -518,14 +547,14 @@ def admin_deposits(h, q, d):
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜 형식이 맞지 않아요')
     with db() as con:
         total = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=?', (date,)).fetchone()[0]
-        matched = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=? AND guest_id IS NOT NULL', (date,)).fetchone()[0]
+        matched = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=? AND (guest_id IS NOT NULL OR fee_note IS NOT NULL)', (date,)).fetchone()[0]
         pages = max(1, -(-total // size)); page = min(page, pages)
         rows = [dict(r) for r in con.execute(
-            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, g.name guest_name, g.status guest_status, g.token LIKE 'manual-%' guest_manual
+            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, g.name guest_name, g.status guest_status, g.token LIKE 'manual-%' guest_manual
                FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id WHERE substr(d.received_at,1,10)=?
                ORDER BY d.id DESC LIMIT ? OFFSET ?''',
             (date, size, (page - 1) * size))]
-    h.json({'deposits': rows, 'date': date, 'page': page, 'pages': pages, 'total': total, 'matched': matched, 'today': today()})
+    h.json({'deposits': rows, 'date': date, 'page': page, 'pages': pages, 'total': total, 'matched': matched, 'today': today(), 'club_fee': club_fee()})
 
 
 def admin_deposit_delete(h, q, d):
@@ -634,8 +663,13 @@ def pw_ok(pw, row):
     return secrets.compare_digest(hash_pw(pw, row['salt']), row['hash'])
 
 
+# 보기 전용 관리자도 할 수 있는 것: 로그아웃·내 비밀번호·내 폰 알림
+VIEWER_OK = ('/api/admin/logout', '/api/admin/password', '/api/admin/push/subscribe', '/api/admin/push/unsubscribe')
+
+
 def me_info(sess):
     return {'ok': True, 'id': sess['id'], 'super': sess['super'], 'must_change': sess['must_change'],
+            'viewer': bool(sess.get('viewer')),
             'env': bool(sess['super'] and env_admin())}
 
 
@@ -651,7 +685,7 @@ def admin_login(h, q, d):
         with db() as con:
             row = con.execute('SELECT * FROM admin_user WHERE lower(id)=lower(?)', (uid,)).fetchone()
         if row and pw_ok(pw, row):
-            sess = {'id': row['id'], 'super': False, 'must_change': bool(row['must_change'])}
+            sess = {'id': row['id'], 'super': False, 'must_change': bool(row['must_change']), 'viewer': bool(row['viewer'])}
     if not sess: raise ApiError('아이디 또는 비밀번호가 맞지 않아요', 401)
     sid = secrets.token_urlsafe(24)
     SESSIONS[sid] = sess
@@ -677,7 +711,7 @@ def drop_sessions(uid):
 # ── 관리자 관리 (슈퍼 관리자만) ─────────────────────
 def users_list(h, q, d):
     with db() as con:
-        rows = [dict(r) for r in con.execute('SELECT id, must_change, created_at FROM admin_user ORDER BY created_at')]
+        rows = [dict(r) for r in con.execute('SELECT id, must_change, viewer, created_at FROM admin_user ORDER BY created_at')]
     h.json({'users': rows, 'super_id': admin_conf()['id']})
 
 
@@ -707,6 +741,17 @@ def users_reset(h, q, d):
                         (salt, hash_pw(USER_INIT_PW, salt), uid)).rowcount
     if not n: raise ApiError('없는 아이디예요', 404)
     drop_sessions(uid)
+    h.json({'ok': True})
+
+
+def users_perm(h, q, d):
+    """슈퍼 관리자가 관리자 권한을 바꿈: viewer=1 이면 보기만, 0 이면 수정도 가능"""
+    uid, viewer = clean(d.get('id'), 20), 1 if d.get('viewer') else 0
+    with db() as con:
+        n = con.execute('UPDATE admin_user SET viewer=? WHERE id=?', (viewer, uid)).rowcount
+    if not n: raise ApiError('없는 아이디예요', 404)
+    for s in SESSIONS.values():                      # 로그인 중이면 바로 적용
+        if s['id'].lower() == uid.lower(): s['viewer'] = bool(viewer)
     h.json({'ok': True})
 
 
@@ -756,9 +801,9 @@ def admin_add(h, q, d):
     with LOCK, db() as con:
         dep = None
         if dep_id:   # 입금 알림에서 바로 추가: 그 알림과 연결하고 입금 시각을 그대로 씀
-            dep = con.execute('SELECT id, received_at, guest_id FROM deposit WHERE id=?', (dep_id,)).fetchone()
+            dep = con.execute('SELECT id, received_at, guest_id, fee_note FROM deposit WHERE id=?', (dep_id,)).fetchone()
             if not dep: raise ApiError('입금 알림을 찾을 수 없어요', 404)
-            if dep['guest_id']: raise ApiError('이미 명단과 연결된 입금이에요', 409)
+            if dep['guest_id'] or dep['fee_note']: raise ApiError('이미 처리된 입금이에요', 409)
         if con.execute("SELECT 1 FROM guest WHERE meet_date=? AND REPLACE(name,' ','')=?",
                        (date, name.replace(' ', ''))).fetchone():
             raise ApiError('이미 같은 이름이 이 날 명단에 있어요', 409)
@@ -792,6 +837,15 @@ def admin_delete(h, q, d):
 
 def admin_stats(h, q, d):
     mode = q.get('mode', 'day')
+    if q.get('kind') == 'club':      # 회비: 낸 날(납부일) 기준, 사람 수는 그 기간에 낸 회원 수
+        per = 'month' if mode == 'month' else 'day'
+        key = 'substr(paid_on,1,7)' if per == 'month' else 'paid_on'
+        rng = ('substr(paid_on,1,4)', q.get('year') or today()[:4]) if per == 'month' else ('substr(paid_on,1,7)', q.get('month') or today()[:7])
+        with db() as con:
+            rows = [{'key': r['k'], 'count': r['n'], 'sum': r['s'] or 0} for r in con.execute(
+                f"SELECT {key} k, COUNT(DISTINCT member_id) n, SUM(amount) s FROM fee WHERE kind='납부' AND {rng[0]}=? GROUP BY k ORDER BY k", (rng[1],))]
+            people = con.execute(f"SELECT COUNT(DISTINCT member_id) FROM fee WHERE kind='납부' AND {rng[0]}=?", (rng[1],)).fetchone()[0]
+        return h.json({'mode': mode, 'kind': 'club', 'rows': rows, 'total_count': people, 'total_sum': sum(r['sum'] for r in rows)})
     if mode == 'month':
         year = q.get('year') or today()[:4]
         sql = '''SELECT substr(meet_date,1,7) k, COUNT(*) n, SUM(fee) s FROM guest
@@ -819,6 +873,7 @@ def admin_settings_save(h, q, d):
     if 'account_no' in vals: vals['account_no'] = re.sub(r'\D', '', vals['account_no'])
     if 'fee' in vals and not vals['fee'].isdigit(): raise ApiError('게스트비는 숫자로 입력해주세요')
     if 'max_guests' in vals and not vals['max_guests'].isdigit(): raise ApiError('정원은 숫자로 입력해주세요')
+    if 'club_fee' in vals and (not vals['club_fee'].isdigit() or int(vals['club_fee']) <= 0): raise ApiError('회비는 0보다 큰 숫자로 입력해주세요')
     if vals.get('kakao_link') and not vals['kakao_link'].startswith('https://'): raise ApiError('카카오페이 링크는 https:// 로 시작해야 해요')
     with db() as con:
         for k, v in vals.items():
@@ -870,6 +925,224 @@ def admin_day_delete(h, q, d):
     h.json({'ok': True})
 
 
+# ── 클럽 회원·회비 ─────────────────────────────────
+DEFAULT_ROLES = ['고문', '회장', '부회장', '총무', '부총무', '재무', '부재무']
+
+
+def this_ym():
+    return today()[:7]
+
+
+def club_fee():
+    try: return int(settings(defaults=True).get('club_fee') or 25000)
+    except ValueError: return 25000
+
+
+def get_roles(con):
+    r = con.execute("SELECT value FROM setting WHERE key='roles'").fetchone()
+    try: return json.loads(r['value']) if r else list(DEFAULT_ROLES)
+    except ValueError: return list(DEFAULT_ROLES)
+
+
+def set_roles(con, roles):
+    con.execute("INSERT OR REPLACE INTO setting(key, value) VALUES ('roles', ?)", (json.dumps(roles, ensure_ascii=False),))
+
+
+def fill_status_months(con):
+    """병가·출장 중인 회원은 그 상태가 이어지는 달을 기록으로 채움 (지난 달이 '미납'으로 보이지 않게)"""
+    ym_now = this_ym()
+    for m in con.execute("SELECT id, status FROM member WHERE status IN ('병가','출장')").fetchall():
+        last = con.execute('SELECT MAX(ym) FROM fee WHERE member_id=?', (m['id'],)).fetchone()[0]
+        ym = club.ym_add(last, 1) if last else ym_now
+        while ym <= ym_now:
+            con.execute('INSERT OR IGNORE INTO fee(member_id, ym, kind) VALUES (?,?,?)', (m['id'], ym, m['status']))
+            ym = club.ym_add(ym, 1)
+
+
+def member_rows(con):
+    out = {}
+    for r in con.execute('SELECT member_id, ym, kind FROM fee'):
+        out.setdefault(r['member_id'], {})[r['ym']] = r['kind']
+    return out
+
+
+def auto_fee(con, dep_id, sender, amount):
+    """입금 → 회비 자동 처리. 처리했으면 '홍길동 11월' 같은 설명, 판단이 안 서면 None (미정)"""
+    fee = club_fee()
+    if not amount or amount < fee:
+        return None
+    mems = [dict(r) for r in con.execute("SELECT id, name, status FROM member WHERE status<>'탈퇴'")]
+    plan = club.plan_fee(sender, amount, fee, mems, member_rows(con), this_ym())
+    if not plan:
+        return None
+    for mid, yms in plan:
+        for ym in yms:
+            con.execute('INSERT OR REPLACE INTO fee(member_id, ym, kind, paid_on, amount, deposit_id) VALUES (?,?,?,?,?,?)',
+                        (mid, ym, '납부', today(), fee, dep_id))
+    note = club.plan_text(plan, {m['id']: m['name'] for m in mems}, this_ym())
+    con.execute('UPDATE deposit SET fee_note=? WHERE id=?', (note, dep_id))
+    return note
+
+
+def admin_club(h, q, d):
+    """회원·회비 화면에 필요한 것 한 번에: 회원, 모든 회비 기록, 역할 목록, 회비 금액"""
+    with LOCK, db() as con:
+        fill_status_months(con)
+        members = [dict(r) for r in con.execute('SELECT id, name, role, status, exempt, sort, since FROM member ORDER BY sort, id')]
+        fees = [dict(r) for r in con.execute('SELECT member_id m, ym, kind, paid_on, amount, deposit_id FROM fee')]
+        roles = get_roles(con)
+    h.json({'members': members, 'fees': fees, 'roles': roles, 'fee': club_fee(), 'ym': this_ym(), 'today': today()})
+
+
+def admin_member_save(h, q, d):
+    name = re.sub(r'\s+', '', clean(d.get('name'), 20))
+    role, status = clean(d.get('role'), 20), clean(d.get('status')) or '활동'
+    if not name: raise ApiError('이름을 입력해주세요')
+    if status not in ('활동', '병가', '출장', '탈퇴'): raise ApiError('상태를 골라주세요')
+    exempt, mid, ym = 1 if d.get('exempt') else 0, d.get('id'), this_ym()
+    with LOCK, db() as con:
+        if role and role not in get_roles(con): raise ApiError('없는 역할이에요')
+        dup = con.execute('SELECT 1 FROM member WHERE name=? AND id<>?', (name, mid or 0)).fetchone()
+        if dup: raise ApiError('같은 이름의 회원이 있어요. 구분되게 적어주세요 (예: 김민수B)', 409)
+        if mid:
+            if not con.execute('UPDATE member SET name=?, role=?, status=?, exempt=? WHERE id=?',
+                               (name, role, status, exempt, mid)).rowcount:
+                raise ApiError('없는 회원이에요', 404)
+        else:
+            srt = con.execute('SELECT COALESCE(MAX(sort),0)+1 FROM member').fetchone()[0]
+            mid = con.execute('INSERT INTO member(name, role, status, exempt, sort, since, created_at) VALUES (?,?,?,?,?,?,?)',
+                              (name, role, status, exempt, srt, ym, now())).lastrowid
+        # 이번 달 기록: 병가·출장·탈퇴면 그 상태로 (낸 기록이 있으면 그대로), 활동으로 돌아오면 이번 달 상태 기록을 지움
+        cur = con.execute('SELECT kind FROM fee WHERE member_id=? AND ym=?', (mid, ym)).fetchone()
+        if status != '활동' and (not cur or cur['kind'] != '납부'):
+            con.execute('INSERT OR REPLACE INTO fee(member_id, ym, kind) VALUES (?,?,?)', (mid, ym, status))
+        if status == '활동' and cur and cur['kind'] in ('병가', '출장', '탈퇴'):
+            con.execute('DELETE FROM fee WHERE member_id=? AND ym=?', (mid, ym))
+        if status != '탈퇴':     # 탈퇴를 되돌리면 이후 달의 탈퇴 표시도 지움
+            con.execute("DELETE FROM fee WHERE member_id=? AND kind='탈퇴' AND ym>=?", (mid, ym))
+    h.json({'ok': True, 'id': mid})
+
+
+def admin_member_delete(h, q, d):
+    with LOCK, db() as con:
+        con.execute('DELETE FROM fee WHERE member_id=?', (d.get('id'),))
+        con.execute('DELETE FROM member WHERE id=?', (d.get('id'),))
+    h.json({'ok': True})
+
+
+def admin_role_add(h, q, d):
+    name = re.sub(r'\s+', '', clean(d.get('name'), 10))
+    if not name: raise ApiError('역할 이름을 입력해주세요')
+    with db() as con:
+        roles = get_roles(con)
+        if name in roles: raise ApiError('이미 있는 역할이에요')
+        set_roles(con, roles + [name])
+    h.json({'ok': True})
+
+
+def admin_role_delete(h, q, d):
+    name = clean(d.get('name'), 10)
+    with db() as con:
+        if con.execute('SELECT 1 FROM member WHERE role=?', (name,)).fetchone():
+            raise ApiError('이 역할을 맡은 회원이 있어서 지울 수 없어요')
+        set_roles(con, [r for r in get_roles(con) if r != name])
+    h.json({'ok': True})
+
+
+def admin_fee_set(h, q, d):
+    """회비 현황 칸 하나 직접 바꾸기: kind '' 이면 기록 지움(미납)"""
+    mid, ym, kind = d.get('member_id'), clean(d.get('ym'), 7), clean(d.get('kind'))
+    if not re.fullmatch(r'\d{4}-\d{2}', ym): raise ApiError('달이 잘못됐어요')
+    with LOCK, db() as con:
+        if not kind:
+            con.execute('DELETE FROM fee WHERE member_id=? AND ym=?', (mid, ym))
+        elif kind == '납부':
+            paid_on = clean(d.get('paid_on'), 10) or today()
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', paid_on): raise ApiError('납부일이 잘못됐어요')
+            con.execute('INSERT OR REPLACE INTO fee(member_id, ym, kind, paid_on, amount) VALUES (?,?,?,?,?)',
+                        (mid, ym, '납부', paid_on, club_fee()))
+        elif kind in ('병가', '출장', '탈퇴'):
+            con.execute('INSERT OR REPLACE INTO fee(member_id, ym, kind) VALUES (?,?,?)', (mid, ym, kind))
+        else:
+            raise ApiError('상태가 잘못됐어요')
+    h.json({'ok': True})
+
+
+def admin_fee_pay(h, q, d):
+    """입금 알림(또는 직접)으로 회비 처리: items = [{member_id, start, months}]"""
+    items, dep_id = d.get('items') or [], d.get('deposit_id')
+    if not items: raise ApiError('회원을 골라주세요')
+    fee = club_fee()
+    with LOCK, db() as con:
+        paid_on = today()
+        if dep_id:
+            dep = con.execute('SELECT received_at, guest_id, fee_note FROM deposit WHERE id=?', (dep_id,)).fetchone()
+            if not dep: raise ApiError('입금 알림을 찾을 수 없어요', 404)
+            if dep['guest_id'] or dep['fee_note']: raise ApiError('이미 처리된 입금이에요', 409)
+            paid_on = dep['received_at'][:10]
+        names, plan = {}, []
+        for it in items:
+            m = con.execute('SELECT id, name FROM member WHERE id=?', (it.get('member_id'),)).fetchone()
+            start, n = clean(it.get('start'), 7), int(it.get('months') or 0)
+            if not m: raise ApiError('없는 회원이에요', 404)
+            if not re.fullmatch(r'\d{4}-\d{2}', start) or not 1 <= n <= 24: raise ApiError('달을 다시 골라주세요')
+            yms = club.ym_range(start, n)
+            got = con.execute(f"SELECT ym FROM fee WHERE member_id=? AND kind='납부' AND ym IN ({','.join('?' * n)})",
+                              (m['id'], *yms)).fetchall()
+            if got: raise ApiError(f"{m['name']} {int(got[0]['ym'][5:])}월은 이미 냈어요")
+            names[m['id']] = m['name']; plan.append((m['id'], yms))
+        for mid, yms in plan:
+            for ym in yms:
+                con.execute('INSERT OR REPLACE INTO fee(member_id, ym, kind, paid_on, amount, deposit_id) VALUES (?,?,?,?,?,?)',
+                            (mid, ym, '납부', paid_on, fee, dep_id))
+        note = club.plan_text(plan, names, this_ym())
+        if dep_id: con.execute('UPDATE deposit SET fee_note=? WHERE id=?', (note, dep_id))
+    h.json({'ok': True, 'note': note})
+
+
+def admin_club_export(h, q, d):
+    """회비 현황 엑셀 다운로드 — 고른 연도 1년치 (지금 쓰는 '회비내역(연도)' 양식)"""
+    year = q.get('year') or today()[:4]
+    if not re.fullmatch(r'\d{4}', year): raise ApiError('연도가 잘못됐어요')
+    with db() as con:
+        fill_status_months(con)
+        members = [dict(r) for r in con.execute('SELECT id, name, role, status, exempt, since FROM member ORDER BY sort, id')]
+        fees = {}
+        for r in con.execute('SELECT member_id, ym, kind, paid_on, amount FROM fee'):
+            fees.setdefault(r['member_id'], {})[r['ym']] = dict(r)
+    data = club.fee_sheet(int(year), members, fees)
+    from urllib.parse import quote
+    fname = quote(f'상도초클럽_회비현황_{year}.xlsx')
+    h.send_response(200)
+    h.send_header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    h.send_header('Content-Disposition', f"attachment; filename=\"club-fee-{year}.xlsx\"; filename*=UTF-8''{fname}")
+    h.send_header('Content-Length', str(len(data)))
+    h.send_header('Cache-Control', 'no-store')
+    h.end_headers()
+    h.wfile.write(data)
+
+
+def admin_club_import(h, q, d):
+    """엑셀(재무보고현황.xlsx) 의 '회비내역(2026)' 부터 읽어 회원·회비를 새로 채움 (기존 회원·회비는 지움)"""
+    try:
+        r = club.parse_club(d.get('_raw') or b'', 2026, this_ym())
+    except Exception as e:  # noqa
+        raise ApiError(f'엑셀을 읽지 못했어요: {e}')
+    with LOCK, db() as con:
+        con.execute('DELETE FROM fee'); con.execute('DELETE FROM member')
+        ids = {}
+        for m in r['members']:
+            ids[m['name']] = con.execute('INSERT INTO member(name, role, status, exempt, sort, since, created_at) VALUES (?,?,?,?,?,?,?)',
+                                         (m['name'], m['role'], m['status'], m['exempt'], m['sort'], m['since'] or '2026-01', now())).lastrowid
+        for f in r['fees']:
+            con.execute('INSERT OR REPLACE INTO fee(member_id, ym, kind, paid_on, amount) VALUES (?,?,?,?,?)',
+                        (ids[f['name']], f['ym'], f['kind'], f['paid_on'], club_fee() if f['kind'] == '납부' else None))
+        roles = get_roles(con)
+        set_roles(con, roles + [x for x in r['roles'] if x not in roles])
+    h.json({'ok': True, 'members': len(r['members']), 'fees': len(r['fees']),
+            'active': sum(m['status'] != '탈퇴' for m in r['members'])})
+
+
 def admin_password(h, q, d):
     pw = str(d.get('pw') or '')
     sess = h.session()
@@ -917,6 +1190,16 @@ ROUTES = {
     ('POST', '/api/admin/push/unsubscribe'): push_unsubscribe,
     ('POST', '/api/admin/users/reset'): users_reset,
     ('POST', '/api/admin/users/delete'): users_delete,
+    ('POST', '/api/admin/users/perm'): users_perm,
+    ('GET', '/api/admin/club'): admin_club,
+    ('POST', '/api/admin/members/save'): admin_member_save,
+    ('POST', '/api/admin/members/delete'): admin_member_delete,
+    ('POST', '/api/admin/roles/add'): admin_role_add,
+    ('POST', '/api/admin/roles/delete'): admin_role_delete,
+    ('POST', '/api/admin/fees/set'): admin_fee_set,
+    ('POST', '/api/admin/fees/pay'): admin_fee_pay,
+    ('POST', '/api/admin/club/import'): admin_club_import,
+    ('GET', '/api/admin/club/export'): admin_club_export,
     ('POST', '/api/hook/deposit'): hook_deposit,
 }
 
