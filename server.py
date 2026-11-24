@@ -12,6 +12,11 @@ from urllib.parse import urlparse, parse_qs
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 PUBLIC = os.path.join(BASE, 'public')
+# 화면 버전: 배포(서버 재시작) 때마다 index.html 내용으로 정함. 앱이 예전 화면이면 스스로 새로고침
+with open(os.path.join(PUBLIC, 'index.html'), 'rb') as _f:
+    INDEX_HTML = _f.read()
+APP_VER = hashlib.sha1(INDEX_HTML).hexdigest()[:10]
+INDEX_HTML = INDEX_HTML.replace(b'__APP_VER__', APP_VER.encode())
 # 데이터 폴더: DATA_DIR > Railway 볼륨 경로 > ./data
 DATA = os.environ.get('DATA_DIR') or os.environ.get('RAILWAY_VOLUME_MOUNT_PATH') or os.path.join(BASE, 'data')
 # 서버 주소: HOST 지정 없으면 Railway에선 0.0.0.0, 로컬에선 127.0.0.1
@@ -335,6 +340,13 @@ class H(SimpleHTTPRequestHandler):
             return
         if self.path.startswith('/api/'):
             return self.api('GET')
+        if self.path.split('?')[0] in ('/', '/index.html'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(INDEX_HTML)))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            return self.wfile.write(INDEX_HTML)
         return super().do_GET()
 
     def do_POST(self):
@@ -371,7 +383,7 @@ class H(SimpleHTTPRequestHandler):
 # ── 게스트 API ─────────────────────────────────────
 def public_info(h, q, d):
     s = settings()
-    h.json({'settings': {k: s[k] for k in SETTING_KEYS}, 'counts': counts(s['meet_date']), 'closed': s['closed']})
+    h.json({'settings': {k: s[k] for k in SETTING_KEYS}, 'counts': counts(s['meet_date']), 'closed': s['closed'], 'ver': APP_VER})
 
 
 def mask_name(n):
@@ -509,7 +521,7 @@ def admin_deposits(h, q, d):
         matched = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=? AND guest_id IS NOT NULL', (date,)).fetchone()[0]
         pages = max(1, -(-total // size)); page = min(page, pages)
         rows = [dict(r) for r in con.execute(
-            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, g.name guest_name, g.status guest_status
+            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, g.name guest_name, g.status guest_status, g.token LIKE 'manual-%' guest_manual
                FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id WHERE substr(d.received_at,1,10)=?
                ORDER BY d.id DESC LIMIT ? OFFSET ?''',
             (date, size, (page - 1) * size))]
@@ -740,7 +752,13 @@ def admin_add(h, q, d):
     try: fee = int(str(d.get('fee', '')).replace(',', ''))
     except ValueError: raise ApiError('금액을 숫자로 입력해주세요')
     if not 0 <= fee <= 1000000: raise ApiError('금액이 너무 커요')
+    dep_id = d.get('deposit_id')
     with LOCK, db() as con:
+        dep = None
+        if dep_id:   # 입금 알림에서 바로 추가: 그 알림과 연결하고 입금 시각을 그대로 씀
+            dep = con.execute('SELECT id, received_at, guest_id FROM deposit WHERE id=?', (dep_id,)).fetchone()
+            if not dep: raise ApiError('입금 알림을 찾을 수 없어요', 404)
+            if dep['guest_id']: raise ApiError('이미 명단과 연결된 입금이에요', 409)
         if con.execute("SELECT 1 FROM guest WHERE meet_date=? AND REPLACE(name,' ','')=?",
                        (date, name.replace(' ', ''))).fetchone():
             raise ApiError('이미 같은 이름이 이 날 명단에 있어요', 409)
@@ -749,7 +767,9 @@ def admin_add(h, q, d):
             n += 1; pay_name = f'{name}{n}'
         cur = con.execute("INSERT INTO guest(meet_date,name,phone4,age,gender,level,pay_name,fee,status,token,created_at,paid_at)"
                           " VALUES (?,?,'',?,?,?,?,?,'신청완료',?,?,?)",
-                          (date, name, age, gender, level, pay_name, fee, 'manual-' + secrets.token_urlsafe(9), now(), now()))
+                          (date, name, age, gender, level, pay_name, fee, 'manual-' + secrets.token_urlsafe(9), now(),
+                           dep['received_at'] if dep else now()))
+        if dep: con.execute('UPDATE deposit SET guest_id=? WHERE id=?', (cur.lastrowid, dep['id']))
     h.json({'ok': True, 'id': cur.lastrowid})
 
 

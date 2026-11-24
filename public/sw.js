@@ -1,10 +1,16 @@
 // 앱 설치용 서비스 워커. 신청·입금 상태는 항상 서버에서 새로 받아야 하므로 캐시하지 않고,
 // 인터넷이 끊겼을 때 첫 화면 요청에만 안내 문구를 보여준다.
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+// 화면은 폰 저장본(HTTP 캐시)을 쓰지 않고 매번 서버에서 받는다 (배포 후 예전 화면이 남던 문제, 2026-11-24)
+let isUpdate = false;
+self.addEventListener('install', () => { isUpdate = !!self.registration.active; self.skipWaiting(); });
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim().then(() => {
+  // 새 버전으로 바뀐 경우: 열려 있던 예전 화면을 새로 불러옴
+  if (isUpdate) return self.clients.matchAll({ type: 'window' }).then(cs => cs.forEach(c => c.navigate(c.url).catch(() => {})));
+})));
 self.addEventListener('fetch', e => {
   if (e.request.mode !== 'navigate') return;
-  e.respondWith(fetch(e.request).catch(() => new Response(
+  e.respondWith(fetch(e.request.url, { cache: 'no-store', credentials: 'same-origin' })
+    .then(r => r.redirected ? Response.redirect(r.url, 302) : r).catch(() => new Response(
     '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<body style="font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0;color:#1E1E1E">' +
     '<div style="text-align:center"><p style="font-size:17px;font-weight:700">인터넷에 연결되지 않았어요</p>' +

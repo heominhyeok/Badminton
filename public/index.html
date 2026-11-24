@@ -192,6 +192,12 @@
   .lg-wk{background:var(--sub)}
   .lg-ex{background:var(--yellow)}
   .lg-off{background:var(--faint)}
+  .mdate{display:flex;align-items:center;gap:4px;background:var(--field);border-radius:12px;padding:4px 6px 4px 15px}
+  .mdate span{font-size:14px;color:var(--sub);flex:1}
+  .mdate b{font-size:15px;min-width:92px;text-align:center}
+  .mdate button{border:0;background:none;font-size:20px;width:40px;height:40px;color:var(--ink)}
+  .dep.can{cursor:pointer}
+  .dep .tag-add{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin:3px 0 0;color:var(--ink);background:var(--yellow-soft, #FFF5B8)}
   .mfee{display:flex;align-items:center;gap:8px;background:var(--field);border-radius:12px;padding:0 15px}
   .mfee span{font-size:14px;color:var(--sub);flex:none}
   .field .mfee input{flex:1;min-width:0;padding:14px 0;background:none;text-align:right;outline:0}
@@ -590,6 +596,7 @@
     <h3 id="mSheetTitle">명단 수기 입력</h3>
     <p class="hint" id="mSheetSub" style="font-size:13px;color:var(--sub);margin:-8px 0 10px"></p>
     <form id="mForm" class="mform" novalidate>
+      <div class="mdate"><span>운동 날짜</span><button type="button" id="mdPrev" aria-label="전날">‹</button><b id="mdLabel"></b><button type="button" id="mdNext" aria-label="다음날">›</button></div>
       <input id="mName" maxlength="10" placeholder="이름" aria-label="이름">
       <select id="mAge" aria-label="나이" required>
         <option value="" selected disabled>나이대 선택</option>
@@ -609,7 +616,7 @@
       </div>
       <label class="mfee"><span>금액</span><input id="mFee" inputmode="numeric" aria-label="금액"><span>원</span></label>
     </form>
-    <p class="hint" style="font-size:12px;color:var(--sub);margin:8px 2px 12px">입금완료로 바로 들어가요</p>
+    <div style="height:12px"></div>
     <button class="cta" type="button" id="mSave">명단에 추가</button>
     <button class="sheet-close" type="button" id="mClose">닫기</button>
   </div>
@@ -711,8 +718,19 @@ function renderPublic(data){
   document.querySelectorAll(".fee").forEach(el => el.textContent = won(S.fee));
   $("acctText").textContent = S.account_no ? `${S.bank_name} ${prettyAcct(S.account_no)} ${S.holder}` : "계좌 미설정";
 }
+const APP_VER = "__APP_VER__";
+// 서버가 새 버전이면(배포 후) 한 번 새로고침해서 새 화면으로
+function checkVer(v){
+  if (!v || v === APP_VER || APP_VER.startsWith("__")) return;
+  try { if (sessionStorage.getItem("gp_rl") === v) return; sessionStorage.setItem("gp_rl", v); } catch { return; }
+  location.reload();
+}
+// 앱을 백그라운드에서 다시 켰을 때도 확인 (송금 화면 중에는 하지 않음 — 이중 송금 방지 잠금 유지)
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && $("stepPay").classList.contains("hidden")) api("/api/public").then(d => checkVer(d.ver)).catch(() => {});
+});
 async function loadPublic(){
-  try { renderPublic(await api("/api/public")); }
+  try { const d = await api("/api/public"); checkVer(d.ver); renderPublic(d); }
   catch (e) { toast(e.message); }
 }
 
@@ -1039,16 +1057,26 @@ document.querySelectorAll("[data-f]").forEach(b => b.addEventListener("click", (
 }));
 
 /* 관리자 수기 입력 */
-function openManual(){
+// from: 입금 알림에서 열 때 { id, sender, amount, received_at } — 이름·금액을 채우고 저장하면 그 알림과 연결
+const M = { date: "", dep: null };
+function openManual(from){
   $("mForm").reset();
-  $("mFee").value = S.fee || "";
-  $("mSheetSub").textContent = `${fmtDate(L.date)} 명단에 추가`;
+  M.dep = from || null;
+  M.date = from ? from.received_at.slice(0, 10) : L.date;
+  $("mName").value = from ? from.sender || "" : "";
+  $("mFee").value = from ? (from.amount ?? "") : (S.fee || "");
+  $("mSheetTitle").textContent = from ? "입금 내역으로 명단 추가" : "명단 수기 입력";
+  $("mSheetSub").textContent = from ? `입금 ${from.received_at.slice(5, 16).replace("-", "/")} · ${from.sender || "-"} ${from.amount == null ? "" : won(from.amount)}` : "입금완료로 바로 들어가요";
+  renderMDate();
   $("mSheet").classList.remove("hidden");
 }
-$("addManual").addEventListener("click", openManual);
+function renderMDate(){ $("mdLabel").textContent = shortDate(M.date); }
+$("mdPrev").addEventListener("click", () => { M.date = addDays(M.date, -1); renderMDate(); });
+$("mdNext").addEventListener("click", () => { M.date = addDays(M.date, 1); renderMDate(); });
+$("addManual").addEventListener("click", () => openManual());
 $("mSheet").addEventListener("click", e => { if (e.target.id === "mSheet" || e.target.id === "mClose") $("mSheet").classList.add("hidden"); });
 $("mSave").addEventListener("click", async () => {
-  const body = { date: L.date, name: $("mName").value.trim(), age: $("mAge").value,
+  const body = { date: M.date, name: $("mName").value.trim(), age: $("mAge").value,
                  gender: picked("mGender"), level: picked("mLevel"), fee: $("mFee").value.replace(/[^\d]/g, "") };
   if (!body.name) return toast("이름을 입력해주세요");
   if (!body.age) return toast("나이대를 골라주세요");
@@ -1057,15 +1085,17 @@ $("mSave").addEventListener("click", async () => {
   if (body.fee === "") return toast("금액을 입력해주세요");
   $("mSave").disabled = true;
   try {
+    if (M.dep) body.deposit_id = M.dep.id;
     await api("/api/admin/add", body);
-    $("mSheet").classList.add("hidden"); toast(`${body.name} 추가했어요`);
-    L.page = 1; loadGuests();
+    $("mSheet").classList.add("hidden"); toast(`${shortDate(body.date)} 명단에 ${body.name} 추가했어요`);
+    if (M.dep) loadDeposits(); else { L.date = body.date; L.page = 1; loadGuests(); }
   } catch (e) { adminFail(e); }
   finally { $("mSave").disabled = false; }
 });
 
 /* 입금 알림 기록 */
 const DP = { page: 1, date: "" };    // date 비어 있으면 서버가 오늘로
+let DEPS = {};
 async function loadDeposits(){
   try {
     const h = $("dList").clientHeight || 300;
@@ -1080,13 +1110,15 @@ async function loadDeposits(){
     $("dMatched").textContent = r.matched;
     $("dPage").textContent = `${r.page} / ${r.pages}`;
     $("dPgPrev").disabled = r.page <= 1; $("dPgNext").disabled = r.page >= r.pages;
+    DEPS = {};
     $("dList").innerHTML = r.deposits.length ? r.deposits.map(x => {
       const day = x.received_at.slice(0, 10), hm = x.received_at.slice(11, 16);
       const when = day === r.today ? "오늘" : shortDate(day);
       const tag = x.guest_id
-        ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} 자동확인</span>`
-        : `<span class="tag-no">${x.amount == null ? "금액 확인 불가" : "맞는 신청 없음"}</span>`;
-      return `<li class="item dep">
+        ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} ${x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
+        : `<span class="tag-add">+ 눌러서 명단 추가</span>`;
+      DEPS[x.id] = x;
+      return `<li class="item dep${x.guest_id ? "" : " can"}" ${x.guest_id ? "" : `data-dep="${x.id}"`}>
         <span class="time num"><b>${hm}</b><span>${when}</span></span>
         <span class="who"><b>${esc(x.sender || "-")}</b>${tag}</span>
         <span class="amt num">${x.amount == null ? "-" : won(x.amount)}</span>
@@ -1097,7 +1129,8 @@ async function loadDeposits(){
 }
 // 슈퍼 관리자: 필요 없는 알림 삭제 (두 번 눌러 확인, 신청 상태는 안 바뀜)
 $("dList").addEventListener("click", async e => {
-  const b = e.target.closest("[data-ddel]"); if (!b) return;
+  const b = e.target.closest("[data-ddel]");
+  if (!b) { const li = e.target.closest("[data-dep]"); if (li) openManual(DEPS[li.dataset.dep]); return; }
   if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "삭제"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "✕"; }, 2500); return; }
   try { await api("/api/admin/deposits/delete", { id: +b.dataset.ddel }); toast("알림을 삭제했어요"); loadDeposits(); }
   catch (err) { adminFail(err); }
