@@ -345,6 +345,11 @@
   .bar .k small{display:block;font-size:10px;font-weight:700;color:var(--green)}
   .bar .track{height:8px;border-radius:999px;background:var(--field);overflow:hidden}
   .bar .fill{height:100%;border-radius:999px;background:var(--yellow);min-width:4px}
+  /* 통계: 회비는 연한 보라 (게스트비는 초록 카드·노란 막대 그대로) */
+  #tabStats.club .acard{background:#E7DFFF;color:#3F2A8C}
+  #tabStats.club .acard .split span{background:rgba(63,42,140,.1)}
+  #tabStats.club .bar .fill{background:#B29CF6}
+  #tabStats.club [data-sk="club"][aria-pressed="true"]{background:#7E62DB;color:#fff}
   .bar .v{text-align:right;white-space:nowrap}
   .bar .v b{font-weight:700}
   .bar .v span{color:var(--sub);margin-left:6px}
@@ -521,7 +526,7 @@
   <section id="admin" class="hidden">
     <nav class="nav"><button class="icon" type="button" data-go="stepApply" aria-label="게스트 화면으로">‹</button><h1>관리자</h1><button class="txt" type="button" id="logoutBtn">로그아웃</button></nav>
     <div class="seg" role="tablist">
-      <button role="tab" aria-selected="true" data-tab="tabList">명단</button>
+      <button role="tab" aria-selected="true" data-tab="tabList">게스트명단</button>
       <button role="tab" aria-selected="false" data-tab="tabMem">회원</button>
       <button role="tab" aria-selected="false" data-tab="tabStats">통계</button>
       <button role="tab" aria-selected="false" data-tab="tabDep">입금 알림</button>
@@ -1812,7 +1817,7 @@ function renderStats(){
 }
 document.querySelectorAll("[data-sk]").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll("[data-sk]").forEach(x => x.setAttribute("aria-pressed", x === b));
-  ST.kind = b.dataset.sk; loadStats();
+  ST.kind = b.dataset.sk; $("tabStats").classList.toggle("club", ST.kind === "club"); loadStats();
 }));
 document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-selected", x === b));
