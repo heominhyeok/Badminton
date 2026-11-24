@@ -1412,10 +1412,30 @@ def admin_fee_pay(h, q, d):
 
 
 def admin_club_report(h, q, d):
-    """월 회비 결산서 (PDF 는 화면에서 그림) — 고른 달 1개월
+    """월 회비 결산서 데이터 (PDF 는 화면에서 그림)"""
+    h.json(report_data(q.get('month') or this_ym()))
+
+
+def admin_club_report_xlsx(h, q, d):
+    """월 회비 결산서 엑셀 (PDF 와 같은 양식)"""
+    r = report_data(q.get('month') or this_ym())
+    data = club.report_sheet(r)
+    from urllib.parse import quote
+    y, m = r['month'].split('-')
+    fname = quote(f'{y}년 {m}월 회비결산서.xlsx')
+    h.send_response(200)
+    h.send_header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    h.send_header('Content-Disposition', f"attachment; filename=\"club-report-{r['month']}.xlsx\"; filename*=UTF-8''{fname}")
+    h.send_header('Content-Length', str(len(data)))
+    h.send_header('Cache-Control', 'no-store')
+    h.end_headers()
+    h.wfile.write(data)
+
+
+def report_data(ym):
+    """월 회비 결산서 — 고른 달 1개월
     수입 = 그 달에 들어온 돈 (입금한 달 기준): 그 달 회비(인원 × 회비) / 이전 달 미납분 / 선납금(다음 달 이후분) / 게스트비
     기타사항 = 그 달 신입·탈퇴·병가·출장 명단, 회원 표 = 전월·가입·탈퇴·회원 (병가·총무·재무 포함)"""
-    ym = q.get('month') or this_ym()
     if not re.fullmatch(r'\d{4}-\d{2}', ym): raise ApiError('달 형식이 잘못됐어요')
     fee = club_fee()
     prev = club.ym_add(ym, -1)
@@ -1481,7 +1501,7 @@ def admin_club_report(h, q, d):
     if bal and bal['income'] > income:                                   # 회비·게스트비·적은 수입 말고 들어온 돈
         lines.append({'kind': 'etc', 'title': '기타 입금', 'amount': bal['income'] - income})
         income = bal['income']
-    h.json({
+    return ({
         'month': ym, 'fee': fee, 'lines': lines, 'income': income, 'bal': bal, 'outs': outs, 'spend': spend,
         'new': names(new), 'quit': names(quit_),
         'sick': [m['name'] for m in members if status.get(m['id']) == '병가'],
@@ -1596,6 +1616,7 @@ ROUTES = {
     ('POST', '/api/admin/club/import'): admin_club_import,
     ('GET', '/api/admin/club/export'): admin_club_export,
     ('GET', '/api/admin/club/report'): admin_club_report,
+    ('GET', '/api/admin/club/report.xlsx'): admin_club_report_xlsx,
     ('GET', '/api/admin/balance'): admin_balance,
     ('POST', '/api/admin/balance/set'): admin_balance_set,
     ('GET', '/api/admin/balance/months'): admin_balance_months,

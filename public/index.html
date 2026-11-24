@@ -334,6 +334,8 @@
   .bal-set{display:flex;gap:8px}
   .bal-set input{flex:1;min-width:0;width:auto}
   .bal-set .btn-sm{flex:none;padding:0 18px}
+  .r-fmt{margin:0 0 10px}
+  .r-fmt label{flex:1;text-align:center}
   .bk-bal{display:flex;align-items:center;justify-content:space-between;background:var(--field);border-radius:12px;padding:12px 16px;margin-bottom:10px;flex:none}
   .bk-bal span{font-size:14px;font-weight:600;color:var(--sub)}
   .bk-bal b{font-size:20px;font-weight:800}
@@ -998,9 +1000,13 @@
 <div class="sheet-bg hidden" id="rSheet">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rTitle">
     <h3 id="rTitle">결산 다운로드</h3>
-    <p class="sheet-sub">몇 월 회비 결산서를 받을까요? (PDF)</p>
+    <p class="sheet-sub">몇 월 회비 결산서를 받을까요?</p>
+    <div class="chips r-fmt" role="radiogroup" aria-label="파일 형식">
+      <input type="radio" name="rFmt" id="rfPdf" value="pdf" checked><label for="rfPdf">PDF</label>
+      <input type="radio" name="rFmt" id="rfXls" value="xlsx"><label for="rfXls">엑셀</label>
+    </div>
     <div class="mdate"><span>달</span><button type="button" id="rPrev" aria-label="이전 달">‹</button><b id="rMonth"></b><button type="button" id="rNext" aria-label="다음 달">›</button></div>
-    <button class="cta" type="button" id="rGo" style="margin-top:12px">PDF 다운로드</button>
+    <button class="cta" type="button" id="rGo" style="margin-top:12px">다운로드</button>
     <button class="sheet-close" type="button" id="rClose">닫기</button>
   </div>
 </div>
@@ -1885,6 +1891,15 @@ function reportHtml(r){
 $("rGo").addEventListener("click", async () => {
   const btn = $("rGo"); btn.disabled = true; btn.textContent = "만드는 중…";
   try {
+    if (document.querySelector("[name=rFmt]:checked")?.value === "xlsx") {
+      const res = await fetch(`/api/admin/club/report.xlsx?month=${rMonth}`);
+      if (!res.ok) { const j = await res.json().catch(() => ({})); const err = new Error(j.error || "다운로드하지 못했어요"); err.status = res.status; throw err; }
+      const url = URL.createObjectURL(await res.blob()), a = document.createElement("a"), [y, m] = rMonth.split("-");
+      a.href = url; a.download = `${y}년 ${m}월 회비결산서.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      $("rSheet").classList.add("hidden"); toast(`${y}년 ${+m}월 결산서(엑셀)를 받았어요`);
+      return;
+    }
     const r = await api(`/api/admin/club/report?month=${rMonth}`);
     await loadJs("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
     await loadJs("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
@@ -1898,7 +1913,7 @@ $("rGo").addEventListener("click", async () => {
     paper.innerHTML = "";
     $("rSheet").classList.add("hidden"); toast(`${y}년 ${+m}월 결산서를 받았어요`);
   } catch (e) { adminFail(e); }
-  finally { btn.disabled = false; btn.textContent = "PDF 다운로드"; }
+  finally { btn.disabled = false; btn.textContent = "다운로드"; }
 });
 
 /* 엑셀 다운로드: 연도 골라서 1년치 */

@@ -267,12 +267,14 @@ _STYLES = (
     '<borders count="2"><border/><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/></border></borders>'
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
     # 9번 = 금액 (천 단위 쉼표 #,##0 — 엑셀 기본 서식 3번)
-    '<cellXfs count="10">' + ''.join(
+    # 10 = 테두리 왼쪽 글자, 11 = 테두리 금액(보통 글씨), 12 = 굵은 제목(테두리 없음), 13 = 오른쪽 작은 글, 14 = 왼쪽 글
+    '<cellXfs count="15">' + ''.join(
         f'<xf numFmtId="{nf}" fontId="{f}" fillId="{fl}" borderId="{b}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
         f'<alignment horizontal="{al}" vertical="center"/></xf>'
         for nf, f, fl, b, al in ((0, 0, 0, 0, 'center'), (0, 1, 0, 0, 'center'), (0, 2, 2, 1, 'center'), (0, 0, 0, 1, 'center'),
                                  (0, 3, 0, 1, 'center'), (0, 4, 0, 1, 'center'), (0, 0, 3, 1, 'center'), (0, 0, 4, 1, 'center'),
-                                 (0, 2, 0, 1, 'center'), (3, 2, 0, 1, 'right'))) +
+                                 (0, 2, 0, 1, 'center'), (3, 2, 0, 1, 'right'),
+                                 (0, 0, 0, 1, 'left'), (3, 0, 0, 1, 'right'), (0, 2, 0, 0, 'left'), (0, 0, 0, 0, 'right'), (0, 0, 0, 0, 'left'))) +
     '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')
 
 _CT = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -291,8 +293,8 @@ _WB_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')
 
 
-def write_xlsx(sheet_name, grid, widths, merges=()):
-    """grid: 행마다 [(값, 스타일번호)…] → xlsx 바이트"""
+def write_xlsx(sheet_name, grid, widths, merges=(), freeze=True, heights=None):
+    """grid: 행마다 [(값, 스타일번호)…] → xlsx 바이트. heights = {행번호: 높이}"""
     rows = []
     for ri, row in enumerate(grid, 1):
         cs = []
@@ -304,12 +306,14 @@ def write_xlsx(sheet_name, grid, widths, merges=()):
                 cs.append(f'<c r="{ref}" s="{s}"/>')
             else:
                 cs.append(f'<c r="{ref}" s="{s}" t="inlineStr"><is><t>{_esc(v)}</t></is></c>')
-        rows.append(f'<row r="{ri}" ht="{30 if ri == 1 else 20}" customHeight="1">{"".join(cs)}</row>')
+        ht = (heights or {}).get(ri) or (30 if ri == 1 and heights is None else 20)
+        rows.append(f'<row r="{ri}" ht="{ht}" customHeight="1">{"".join(cs)}</row>')
     cols = ''.join(f'<col min="{i}" max="{i}" width="{w}" customWidth="1"/>' for i, w in enumerate(widths, 1))
     mg = (f'<mergeCells count="{len(merges)}">' + ''.join(f'<mergeCell ref="{m}"/>' for m in merges) + '</mergeCells>') if merges else ''
     sheet = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
              '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-             '<sheetViews><sheetView workbookViewId="0"><pane xSplit="3" ySplit="3" topLeftCell="D4" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>'
+             + ('<sheetViews><sheetView workbookViewId="0"><pane xSplit="3" ySplit="3" topLeftCell="D4" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>'
+                if freeze else '<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>') +
              f'<cols>{cols}</cols><sheetData>{"".join(rows)}</sheetData>{mg}</worksheet>')
     wb = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
           '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
@@ -387,3 +391,60 @@ def fee_sheet(year, members, fees):
     n = len(grid)
     merges = ['A1:P1'] + [f'A{r}:C{r}' for r in range(n - len(foot) + 1, n + 1)]
     return write_xlsx(f'회비내역({y})', grid, [6, 10, 10] + [12] * 12 + [24], merges)
+
+
+def report_sheet(r):
+    """월 회비 결산서 엑셀 — 화면 PDF 와 같은 양식 (A 날짜 · B 내역 · C 금액 | D 날짜 · E 내역 · F 금액 | G 비고)"""
+    y, m = r['month'].split('-')
+    last = (date(int(y), int(m) % 12 + 1, 1) if int(m) < 12 else date(int(y) + 1, 1, 1)) - timedelta(days=1)
+    span = f'{int(m)}/1~{int(m)}/{last.day}'
+    bal = r.get('bal')
+    grid, merges, heights = [], [], {}
+    def row(cells, h=None):
+        grid.append(cells)
+        if h: heights[len(grid)] = h
+        return len(grid)
+    E = ('', 3)
+    row([('', 0)] * 4 + [('재무', 2), ('감사', 2), ('회장', 2)])
+    row([('', 0)] * 4 + [E, E, E], 40)
+    row([])
+    n = row([(f'{y}년도 ({m})월 회비 결산서', 1)] + [('', 1)] * 6, 34); merges.append(f'A{n}:G{n}')
+    row([('1. 총괄 결산 내역', 12)] + [('', 0)] * 5 + [('(단위 : 원)', 13)])
+    n = row([('전월이월', 2), ('', 2), ('수입', 2), ('', 2), ('지출', 2), ('잔액', 2), ('비고', 2)]); merges += [f'A{n}:B{n}', f'C{n}:D{n}']
+    num = lambda v: (v, 11) if v is not None else E
+    n = row([num(bal['prev'] if bal else None), ('', 11), num(r['income']), ('', 11), num(r['spend']), num(bal['end'] if bal else None), ('통장근거', 3)], 24)
+    merges += [f'A{n}:B{n}', f'C{n}:D{n}']
+    row([])
+    row([('2. 수입 / 지출 내역', 12)])
+    n = row([('수 입', 2), ('', 2), ('', 2), ('지 출', 2), ('', 2), ('', 2), ('비고', 2)]); merges += [f'A{n}:C{n}', f'D{n}:F{n}', f'G{n}:G{n + 1}']
+    row([('날짜', 2), ('내 역', 2), ('금액', 2), ('날짜', 2), ('내 역', 2), ('금액', 2), ('', 2)])
+    grp = [l for l in r['lines'] if l['kind'] in ('fee', 'back', 'pre')]
+    rest = [l for l in r['lines'] if l not in grp]
+    def sub(l):
+        if l['kind'] == 'pre': return f" ({l['detail']} × {l['unit']:,}원)"
+        if l['kind'] in ('fee', 'back'): return f" ({l['count']}명 × {l['unit']:,}원)"
+        return ''
+    md = lambda d: f'{int(d[5:7])}/{int(d[8:10])}'
+    gsum = sum(x['amount'] for x in grp)
+    inc = [[(span if i == 0 else '', 3), (l['title'] + sub(l), 10), (gsum if i == 0 else '', 11)] for i, l in enumerate(grp)]
+    for l in rest:
+        inc.append([(md(l['date']) if l.get('date') else span, 3), (l['title'], 10), (l['amount'], 11)])
+    outs = [[(md(o['date']), 3), (o['title'], 10), (o['amount'], 11)] for o in r['outs']]
+    total = max(10, len(inc), len(outs))
+    first = len(grid) + 1
+    for i in range(total):
+        row((inc[i] if i < len(inc) else [E, ('', 10), ('', 11)]) + (outs[i] if i < len(outs) else [E, ('', 10), ('', 11)]) + [E], 22)
+    if len(grp) > 1:
+        merges += [f'A{first}:A{first + len(grp) - 1}', f'C{first}:C{first + len(grp) - 1}']
+    row([('소계', 2), ('', 2), (r['income'], 9), ('소계', 2), ('', 2), (r['spend'], 9), ('', 2)], 22)
+    row([])
+    row([('[기타사항]', 12)])
+    for label, key in (('신입회원', 'new'), ('탈퇴', 'quit'), ('병가', 'sick'), ('출장', 'trip')):
+        names = r[key]
+        n = row([(f"● {label}({len(names)}명)" + (f" : {', '.join(names)}" if names else ''), 14)] + [('', 14)] * 6); merges.append(f'A{n}:G{n}')
+    row([])
+    c = r['count']
+    row([('', 0)] * 2 + [('적요', 2), ('전월', 2), ('가입', 2), ('탈퇴', 2), ('회원', 2)])
+    row([('', 0)] * 2 + [('회원', 3), (c['prev'], 3), (c['join'] or '-', 3), (c['quit'] or '-', 3), (c['now'], 3)])
+    n = row([('회원 수는 병가 · 총무 · 재무 포함', 13)] + [('', 13)] * 6); merges.append(f'A{n}:G{n}')
+    return write_xlsx(f'{int(m)}월 결산', grid, [11, 34, 13, 9, 24, 13, 8], merges, freeze=False, heights=heights)
