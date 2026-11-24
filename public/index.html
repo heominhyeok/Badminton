@@ -178,18 +178,20 @@
   .cal-head b{font-size:15px}
   .cal-head button{border:0;background:none;font-size:20px;width:36px;height:32px;color:var(--ink)}
   .cal-head button:disabled{opacity:.25}
-  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
   .cal-wk span{text-align:center;font-size:11px;color:var(--sub);padding:2px 0 4px}
   .cal-wk .sun{color:var(--coral)}
   .cal-day{position:relative;border:0;background:none;height:38px;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink);padding:0}
-  .cal-day.wk::after{content:"";position:absolute;left:50%;bottom:4px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--sub)}
-  .cal-day.ex{background:var(--yellow);color:var(--on-yellow)}
+  /* 운동 있는 날: 노란 배경 + 빨간 점 (평일 기본은 연한 노랑, 따로 연 날은 진한 노랑) */
+  .cal-day.wk,.cal-day.ex{background:#FFF1A6;color:#1E1E1E}
+  .cal-day.ex{background:var(--yellow)}
+  .cal-day.wk::after,.cal-day.ex::after{content:"";position:absolute;left:50%;bottom:4px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#FF3B30}
   .cal-day.off{color:var(--faint);font-weight:500}
   .cal-day.today{box-shadow:inset 0 0 0 2px var(--ink)}
   .cal-day:disabled{opacity:.35}
   .cal-legend{display:flex;gap:12px;justify-content:center;font-size:11px;color:var(--sub);padding-top:6px}
   .cal-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
-  .lg-wk{background:var(--sub)}
+  .lg-wk{background:#FFF1A6;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
   .lg-ex{background:var(--yellow)}
   .lg-off{background:var(--faint)}
   .mdate{display:flex;align-items:center;gap:4px;background:var(--field);border-radius:12px;padding:4px 6px 4px 15px}
@@ -507,7 +509,7 @@
           <div class="cal-head"><button type="button" id="calPrev" aria-label="이전 달">‹</button><b id="calTitle"></b><button type="button" id="calNext" aria-label="다음 달">›</button></div>
           <div class="cal-grid cal-wk"><span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
           <div class="cal-grid" id="calDays"></div>
-          <div class="cal-legend"><span><i class="lg-wk"></i>평일 운동</span><span><i class="lg-ex"></i>따로 연 날</span><span><i class="lg-off"></i>쉬는 날</span></div>
+          <div class="cal-legend"><span><i class="lg-wk"></i>평일 운동</span><span><i class="lg-ex"></i>따로 정한 날</span><span><i class="lg-off"></i>쉬는 날</span></div>
         </div>
         <p class="hint">평일은 기본으로 열려요. 날짜를 눌러 평일은 쉬는 날로 닫고, 주말 같은 날은 운동 정보를 넣어 열 수 있어요</p>
         <p class="lbl" style="margin-top:10px">기본 운동 정보 (평일)</p>
