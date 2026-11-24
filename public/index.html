@@ -334,10 +334,19 @@
   .bal-set{display:flex;gap:8px}
   .bal-set input{flex:1;min-width:0;width:auto}
   .bal-set .btn-sm{flex:none;padding:0 18px}
-  .bal-outs{list-style:none;margin:0;padding:0}
-  .bal-outs li{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 2px;border-bottom:1px solid var(--line, #EEE)}
-  .bal-outs li span{color:var(--sub)}
-  .bal-outs li.none{color:var(--sub);justify-content:center}
+  .bk-sum{display:flex;gap:18px;font-size:14px;font-weight:600;margin-top:8px}
+  .bk-sum b{font-size:19px;margin-left:4px}
+  .bk-list .amt{font-size:15px;font-weight:700;flex:none}
+  .bk-list .amt.in{color:var(--green)} .bk-list .amt.out{color:var(--coral)}
+  .bk-list .kd{font-size:11px;font-weight:700;padding:3px 7px;border-radius:999px;flex:none}
+  .bk-list .kd.in{background:var(--green-soft);color:var(--green)} .bk-list .kd.out{background:var(--coral-soft);color:var(--coral)}
+  .btn-del{display:block;width:100%;border:0;background:none;color:var(--coral);font-size:14px;font-weight:700;padding:12px 0 2px}
+  .cm-btn{display:flex;align-items:center;gap:8px;width:100%;border:0;border-radius:12px;background:var(--field);padding:15px 16px;margin-top:12px;font-size:15px;font-weight:700;color:var(--ink);text-align:left}
+  .cm-btn span{flex:none} .cm-btn small{flex:1;font-size:12px;font-weight:600;color:var(--sub);text-align:right} .cm-btn b{font-size:17px;color:var(--sub)}
+  .cm-list .item{cursor:pointer}
+  .cm-list .item.live{cursor:default;background:var(--field)}
+  .cm-list .amt{font-size:16px;font-weight:800;flex:none}
+  .cm-edit{padding-top:10px;flex:none}
   .cpre{display:block;font-size:12.5px;font-weight:600;margin-top:4px;opacity:.85}
   .mdate{display:flex;align-items:center;gap:4px;background:var(--field);border-radius:12px;padding:4px 6px 4px 15px}
   .mdate span{font-size:14px;color:var(--sub);flex:1}
@@ -574,10 +583,10 @@
   <section id="admin" class="hidden">
     <nav class="nav"><button class="icon" type="button" data-go="stepApply" aria-label="게스트 화면으로">‹</button><h1>관리자</h1><button class="txt" type="button" id="logoutBtn">로그아웃</button></nav>
     <div class="seg" role="tablist">
-      <button role="tab" aria-selected="true" data-tab="tabList">게스트명단</button>
+      <button role="tab" aria-selected="true" data-tab="tabList">게스트</button>
       <button role="tab" aria-selected="false" data-tab="tabMem">회원</button>
       <button role="tab" aria-selected="false" data-tab="tabStats">통계</button>
-      <button role="tab" aria-selected="false" data-tab="tabDep">입금 알림</button>
+      <button role="tab" aria-selected="false" data-tab="tabDep">입출금관리</button>
       <button role="tab" aria-selected="false" data-tab="tabSet">설정</button>
     </div>
 
@@ -683,6 +692,11 @@
 
     <!-- 입금 알림 -->
     <div class="pane hidden" id="tabDep">
+      <div class="seg sm" role="tablist" style="margin-bottom:10px">
+        <button role="tab" aria-selected="true" data-dv="alert">입금 알림</button>
+        <button role="tab" aria-selected="false" data-dv="book">통장관리</button>
+      </div>
+      <div class="mv" id="dvAlert">
       <div class="datebar">
         <button type="button" id="pvPrev" aria-label="전날">‹</button>
         <label><span id="pvLabel"></span><span class="today hidden" id="pvToday">오늘</span><input type="date" id="pvInput" aria-label="날짜 선택"></label>
@@ -702,6 +716,21 @@
       </div>
       <ul class="list" id="dList"></ul>
       <div class="pager"><button type="button" id="dPgPrev" aria-label="이전 페이지">‹</button><span class="num" id="dPage">1 / 1</span><button type="button" id="dPgNext" aria-label="다음 페이지">›</button></div>
+      </div>
+      <div class="mv hidden" id="dvBook">
+        <div class="datebar">
+          <button type="button" id="bkPrev" aria-label="전날">‹</button>
+          <label><span id="bkLabel"></span><span class="today hidden" id="bkToday">오늘</span><input type="date" id="bkInput" aria-label="날짜 선택"></label>
+          <button type="button" id="bkNext" aria-label="다음날">›</button>
+        </div>
+        <div class="acard green bk-card" style="margin-bottom:8px">
+          <span class="t">이날 통장 내역</span>
+          <span class="bk-sum"><span>수입 <b class="num" id="bkIn">0원</b></span><span>지출 <b class="num" id="bkOut">0원</b></span></span>
+          <span class="s" id="bkMonth"></span>
+        </div>
+        <ul class="list bk-list" id="bkList"></ul>
+        <div class="cta-wrap ed" style="padding-bottom:4px"><button class="cta" type="button" id="bkAdd">+ 내역 추가</button></div>
+      </div>
     </div>
 
     <!-- 설정 -->
@@ -748,8 +777,7 @@
           <div class="bal-set"><input id="balInput" inputmode="numeric" placeholder="지금 통장 잔액 (원)" autocomplete="off"><button type="button" class="btn-sm y" id="balSave">맞추기</button></div>
           <p class="hint">지금 통장 앱에 보이는 잔액을 넣으면, 이 시각부터 들어온 입금은 더하고 출금은 빼서 계산해요</p>
         </div>
-        <p class="lbl" style="margin-top:14px">최근 출금</p>
-        <ul class="bal-outs" id="balOuts"></ul>
+        <button type="button" class="cm-btn" id="cmBtn"><span>달별 확정 잔액</span><small id="cmBtnSub"></small><b>›</b></button>
         <p class="lbl" style="margin-top:18px">계좌 정보 수정</p>
         <p class="lbl">은행</p>
         <select name="bank_name" required>
@@ -924,6 +952,40 @@
 </div>
 
 <!-- 회비 현황 엑셀 다운로드: 연도 고르기 -->
+<div class="sheet-bg hidden" id="bkSheet">
+  <div class="sheet field" role="dialog" aria-modal="true" aria-labelledby="bkTitle">
+    <h3 id="bkTitle">내역 추가</h3>
+    <p class="sheet-sub hidden" id="bkBankHint">출금 알림으로 들어온 내역이에요. 금액·날짜는 은행 기준이라 항목 이름만 고칠 수 있어요</p>
+    <div class="mform">
+      <div class="chips" role="radiogroup" aria-label="수입 지출">
+        <input type="radio" name="bkKind" id="bkKIn" value="수입"><label for="bkKIn">수입</label>
+        <input type="radio" name="bkKind" id="bkKOut" value="지출"><label for="bkKOut">지출</label>
+      </div>
+      <div class="mdate"><span>날짜</span><button type="button" id="bkdPrev" aria-label="전날">‹</button><b id="bkdLabel"></b><button type="button" id="bkdNext" aria-label="다음날">›</button></div>
+      <input id="bkTitleIn" maxlength="40" placeholder="항목 (예: 2회차 사용료, 대회 찬조)" aria-label="항목">
+      <label class="mfee"><span>금액</span><input id="bkAmt" inputmode="numeric" aria-label="금액"><span>원</span></label>
+    </div>
+    <div style="height:12px"></div>
+    <button class="cta" type="button" id="bkSave">저장</button>
+    <button class="btn-del hidden" type="button" id="bkDel">이 내역 지우기</button>
+    <button class="sheet-close" type="button" id="bkClose">닫기</button>
+  </div>
+</div>
+
+<!-- 달별 확정 잔액 -->
+<div class="sheet-bg hidden" id="cmSheet">
+  <div class="sheet tall" role="dialog" aria-modal="true" aria-labelledby="cmTitle">
+    <h3 id="cmTitle">달별 확정 잔액</h3>
+    <p class="sheet-sub">달이 끝나면 말일 기준 잔액을 자동으로 확정해요. 결산서의 전월이월·잔액이 이 값을 써요</p>
+    <ul class="list ss-list cm-list" id="cmList"></ul>
+    <div class="cm-edit hidden ed" id="cmEdit">
+      <p class="lbl" id="cmEditLbl"></p>
+      <div class="bal-set"><input id="cmInput" inputmode="numeric" autocomplete="off" aria-label="확정 잔액"><button type="button" class="btn-sm y" id="cmSave">고치기</button></div>
+    </div>
+    <button class="sheet-close" type="button" id="cmClose">닫기</button>
+  </div>
+</div>
+
 <div class="sheet-bg hidden" id="rSheet">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rTitle">
     <h3 id="rTitle">결산 다운로드</h3>
@@ -1347,7 +1409,7 @@ function openAdmin(){
   stopAdmin();
   adminTimer = setInterval(() => {
     if (!$("tabList").classList.contains("hidden")) loadGuests();
-    if (!$("tabDep").classList.contains("hidden")) loadDeposits();
+    if (!$("tabDep").classList.contains("hidden") && DV === "alert") loadDeposits();
   }, 8000);
 }
 function selectTab(id){
@@ -1356,7 +1418,7 @@ function selectTab(id){
   if (id === "tabMem") loadClub();
   if (id === "tabList") loadGuests();
   if (id === "tabStats") loadStats();
-  if (id === "tabDep") { DP.page = 1; loadDeposits(); }
+  if (id === "tabDep") { if (DV === "book") loadBook(); else { DP.page = 1; loadDeposits(); } }
   if (id === "tabSet") loadSettings();
 }
 document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => selectTab(b.dataset.tab)));
@@ -1603,7 +1665,7 @@ $("board").addEventListener("click", e => {
   openCell(memberOf(+b.dataset.bm), b.dataset.ym);
 });
 // 시트 바깥(어두운 곳)·닫기 버튼으로 닫기
-for (const [sheet, close] of [["memSheet", "msClose"], ["cSheet", "csClose"], ["fSheet", "fsClose"], ["xSheet", "xClose"], ["rSheet", "rClose"]]) {
+for (const [sheet, close] of [["memSheet", "msClose"], ["cSheet", "csClose"], ["fSheet", "fsClose"], ["xSheet", "xClose"], ["rSheet", "rClose"], ["bkSheet", "bkClose"], ["cmSheet", "cmClose"]]) {
   $(sheet).addEventListener("click", e => { if (e.target.id === sheet) $(sheet).classList.add("hidden"); });
   $(close).addEventListener("click", () => $(sheet).classList.add("hidden"));
 }
@@ -1781,9 +1843,9 @@ function reportHtml(r){
   const inc = grp.map((l, i) => (i ? "" : `<td class="c" rowspan="${grp.length}">${span}</td>`)
       + `<td>${esc(l.title)}<span class="sub2">${esc(subOf(l))}${grp.length > 1 ? ` = ${n(l.amount)}원` : ""}</span></td>`
       + (i ? "" : `<td class="r" rowspan="${grp.length}">${n(grp.reduce((t, x) => t + x.amount, 0))}</td>`))
-    .concat(rest.map(l => `<td class="c">${span}</td><td>${esc(l.title)}</td><td class="r">${n(l.amount)}</td>`));
+    .concat(rest.map(l => `<td class="c">${l.date ? `${+l.date.slice(5, 7)}/${+l.date.slice(8, 10)}` : span}</td><td>${esc(l.title)}</td><td class="r">${n(l.amount)}</td>`));
   // 지출: 출금 알림 (잔액을 맞춘 뒤부터)
-  const outs = (r.bal?.outs || []).map(o => `<td class="c">${+o.received_at.slice(5, 7)}/${+o.received_at.slice(8, 10)}</td><td>${esc(o.receiver || "출금")}</td><td class="r">${n(o.amount)}</td>`);
+  const outs = (r.outs || []).map(o => `<td class="c">${+o.date.slice(5, 7)}/${+o.date.slice(8, 10)}</td><td>${esc(o.title)}</td><td class="r">${n(o.amount)}</td>`);
   const total = Math.max(10, inc.length, outs.length), empty3 = "<td></td><td></td><td></td>";
   const rows = Array.from({ length: total }, (_, i) => `<tr>${i < inc.length ? inc[i] : i < grp.length ? "" : empty3}${outs[i] || empty3}<td></td></tr>`);
   const bal = r.bal;
@@ -1795,14 +1857,14 @@ function reportHtml(r){
     <h2>1. 총괄 결산 내역</h2>
     <div class="unit">(단위 : 원)</div>
     <table><tr><th>전월이월</th><th>수입</th><th>지출</th><th>잔액</th><th style="width:70px">비고</th></tr>
-      <tr><td class="r">${bal ? n(bal.prev) : ""}</td><td class="r">${n(r.income)}</td><td class="r">${bal ? n(bal.spend) : ""}</td><td class="r">${bal ? n(bal.end) : ""}</td><td class="c" style="font-size:11px">통장근거</td></tr></table>
+      <tr><td class="r">${bal ? n(bal.prev) : ""}</td><td class="r">${n(r.income)}</td><td class="r">${n(r.spend)}</td><td class="r">${bal ? n(bal.end) : ""}</td><td class="c" style="font-size:11px">통장근거</td></tr></table>
     <h2>2. 수입 / 지출 내역</h2>
     <table class="lines">
       <colgroup><col style="width:78px"><col><col style="width:86px"><col style="width:58px"><col style="width:128px"><col style="width:84px"><col style="width:44px"></colgroup>
       <tr><th colspan="3">수 입</th><th colspan="3">지 출</th><th rowspan="2">비고</th></tr>
       <tr><th>날짜</th><th>내 역</th><th>금액</th><th>날짜</th><th>내 역</th><th>금액</th></tr>
       ${rows.join("")}
-      <tr class="tot"><td class="c">소계</td><td></td><td class="r">${n(r.income)}</td><td class="c">소계</td><td></td><td class="r">${bal ? n(bal.spend) : ""}</td><td></td></tr>
+      <tr class="tot"><td class="c">소계</td><td></td><td class="r">${n(r.income)}</td><td class="c">소계</td><td></td><td class="r">${n(r.spend)}</td><td></td></tr>
     </table>
     <div class="etc"><b>[기타사항]</b>
       <ul>${who("신입회원", r.new)}${who("탈퇴", r.quit)}${who("병가", r.sick)}${who("출장", r.trip)}</ul>
@@ -1985,6 +2047,69 @@ $("dList").addEventListener("click", async e => {
   catch (err) { adminFail(err); }
 });
 $("pvPrev").addEventListener("click", () => { DP.date = addDays(DP.date, -1); DP.page = 1; loadDeposits(); });
+/* 입출금관리: [입금 알림] [통장관리] */
+var DV = "alert";
+document.querySelectorAll("[data-dv]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-dv]").forEach(x => x.setAttribute("aria-selected", x === b));
+  DV = b.dataset.dv;
+  $("dvAlert").classList.toggle("hidden", DV !== "alert"); $("dvBook").classList.toggle("hidden", DV !== "book");
+  if (DV === "book") loadBook(); else loadDeposits();
+}));
+/* 통장관리: 날짜별 수입·지출 (결산서 수입·지출 칸에 들어감) */
+const BK = { date: new Date().toLocaleDateString("sv-SE"), items: [], edit: null, d: "" };
+async function loadBook(){
+  try {
+    const r = await api(`/api/admin/book?date=${BK.date}`);
+    BK.items = r.items;
+    $("bkLabel").textContent = shortDate(r.date); $("bkInput").value = r.date;
+    $("bkToday").classList.toggle("hidden", r.date !== new Date().toLocaleDateString("sv-SE"));
+    $("bkIn").textContent = won(r.in); $("bkOut").textContent = won(r.out);
+    $("bkMonth").textContent = `${+r.date.slice(5, 7)}월 전체  수입 ${won(r.month_in)} · 지출 ${won(r.month_out)}`;
+    $("bkList").innerHTML = r.items.length ? r.items.map(x => `<li class="item" data-bk="${x.id}">
+        <span class="kd ${x.kind === "수입" ? "in" : "out"}">${x.kind}</span>
+        <span class="who"><b>${esc(x.title)}</b><span>${x.src === "bank" ? `출금 알림 · ${x.at.slice(11, 16)}` : "직접 적음"}</span></span>
+        <span class="amt num ${x.kind === "수입" ? "in" : "out"}">${x.kind === "수입" ? "+" : "−"}${won(x.amount)}</span>
+      </li>`).join("") : `<li class="empty"><div><b>이날 적은 내역이 없어요</b>아래 버튼으로 수입·지출을 적어요</div></li>`;
+  } catch (e) { adminFail(e); }
+}
+$("bkPrev").addEventListener("click", () => { BK.date = addDays(BK.date, -1); loadBook(); });
+$("bkNext").addEventListener("click", () => { BK.date = addDays(BK.date, 1); loadBook(); });
+$("bkInput").addEventListener("change", e => { if (e.target.value) { BK.date = e.target.value; loadBook(); } });
+const bkDateShow = () => { $("bkdLabel").textContent = shortDate(BK.d); };
+function openBook(x){
+  BK.edit = x || null; BK.d = x ? x.date : BK.date;
+  const bank = x?.src === "bank";
+  $("bkTitle").textContent = x ? "내역 고치기" : "내역 추가";
+  $("bkBankHint").classList.toggle("hidden", !bank);
+  document.querySelectorAll("[name=bkKind]").forEach(r => { r.checked = x ? r.value === x.kind : false; r.disabled = bank; });
+  $("bkTitleIn").value = x ? x.title : ""; $("bkAmt").value = x ? Number(x.amount).toLocaleString("ko-KR") : "";
+  $("bkAmt").disabled = bank; $("bkdPrev").disabled = bank; $("bkdNext").disabled = bank;
+  $("bkDel").classList.toggle("hidden", !x);
+  bkDateShow(); $("bkSheet").classList.remove("hidden");
+}
+$("bkAdd").addEventListener("click", () => openBook());
+$("bkList").addEventListener("click", e => { const li = e.target.closest("[data-bk]"); if (!li || ME?.viewer) return; openBook(BK.items.find(x => x.id === +li.dataset.bk)); });
+$("bkdPrev").addEventListener("click", () => { BK.d = addDays(BK.d, -1); bkDateShow(); });
+$("bkdNext").addEventListener("click", () => { BK.d = addDays(BK.d, 1); bkDateShow(); });
+$("bkAmt").addEventListener("input", e => { const v = e.target.value.replace(/\D/g, ""); e.target.value = v ? Number(v).toLocaleString("ko-KR") : ""; });
+$("bkSave").addEventListener("click", async () => {
+  const kind = document.querySelector("[name=bkKind]:checked")?.value, title = $("bkTitleIn").value.trim(), amount = $("bkAmt").value.replace(/\D/g, "");
+  if (!kind) return toast("수입인지 지출인지 골라주세요");
+  if (!title) return toast("항목을 적어주세요");
+  if (!amount) return toast("금액을 넣어주세요");
+  try {
+    await api("/api/admin/book/save", { id: BK.edit?.id, kind, title, amount, date: BK.d });
+    $("bkSheet").classList.add("hidden"); BK.date = BK.d;
+    toast(`${shortDate(BK.d)} ${kind} ${won(amount)} 저장했어요`); loadBook();
+  } catch (e) { adminFail(e); }
+});
+$("bkDel").addEventListener("click", async () => {
+  const b = $("bkDel");
+  if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "정말 지울까요? 한 번 더 누르면 지워요"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "이 내역 지우기"; }, 3000); return; }
+  b.classList.remove("arm"); b.textContent = "이 내역 지우기";
+  try { await api("/api/admin/book/delete", { id: BK.edit.id }); $("bkSheet").classList.add("hidden"); toast("지웠어요"); loadBook(); }
+  catch (e) { adminFail(e); }
+});
 $("pvNext").addEventListener("click", () => { DP.date = addDays(DP.date, 1); DP.page = 1; loadDeposits(); });
 $("pvInput").addEventListener("change", e => { if (e.target.value) { DP.date = e.target.value; DP.page = 1; loadDeposits(); } });
 $("dPgPrev").addEventListener("click", () => { DP.page--; loadDeposits(); });
@@ -2083,11 +2208,39 @@ async function loadBalance(){
     $("balNow").textContent = r.balance === null ? "잔액을 맞춰주세요" : won(r.balance);
     $("balCalc").textContent = r.balance === null ? "아래에 지금 통장 잔액을 한 번 넣으면 그때부터 자동으로 계산해요"
       : `기준 ${won(r.base)} (${mdhm(r.base_at)}) + 입금 ${won(r.dep)} (${r.dep_n}건) − 출금 ${won(r.wd)} (${r.wd_n}건)`;
+    loadMonths();
     $("balBank").textContent = r.bank ? `마지막 은행 알림의 잔액 ${won(r.bank.amount)} (${mdhm(r.bank.at)})` : "";
-    $("balOuts").innerHTML = r.outs.length ? r.outs.map(o => `<li><b>${esc(o.receiver || "출금")}</b><span>${mdhm(o.received_at)}</span><b class="num">−${won(o.amount)}</b></li>`).join("")
-      : `<li class="none">아직 출금 알림이 없어요</li>`;
+
   } catch (e) { adminFail(e); }
 }
+/* 달별 확정 잔액: 달이 끝나면 말일 기준으로 자동 확정, 누르면 고칠 수 있음 */
+const CM = { edit: null };
+async function loadMonths(){
+  try {
+    const r = await api("/api/admin/balance/months");
+    const ymTxt = ym => `${ym.slice(0, 4)}년 ${+ym.slice(5)}월`;
+    const lastDay = ym => new Date(+ym.slice(0, 4), +ym.slice(5), 0).getDate();
+    const rows = (r.live ? [`<li class="item live"><span class="who"><b>${ymTxt(r.live.ym)}</b><span>진행 중 · 지금 잔액</span></span><span class="amt num">${won(r.live.balance)}</span></li>`] : [])
+      .concat(r.months.map(m => `<li class="item" data-cm="${m.ym}" data-v="${m.balance}"><span class="who"><b>${ymTxt(m.ym)}</b><span>${+m.ym.slice(5)}/${lastDay(m.ym)} 말일 기준 · ${m.auto ? "자동 확정" : "직접 고침"}</span></span><span class="amt num">${won(m.balance)}</span></li>`));
+    $("cmList").innerHTML = rows.length ? rows.join("") : `<li class="empty"><div><b>아직 확정된 달이 없어요</b>먼저 통장 잔액을 맞춰주세요</div></li>`;
+    $("cmBtnSub").textContent = r.months.length ? `${+r.months[0].ym.slice(5)}월 말 ${won(r.months[0].balance)}` : "";
+  } catch (e) { adminFail(e); }
+}
+$("cmBtn").addEventListener("click", () => { $("cmEdit").classList.add("hidden"); $("cmSheet").classList.remove("hidden"); loadMonths(); });
+$("cmList").addEventListener("click", e => {
+  const li = e.target.closest("[data-cm]"); if (!li || ME?.viewer) return;
+  CM.edit = li.dataset.cm;
+  $("cmEditLbl").textContent = `${CM.edit.slice(0, 4)}년 ${+CM.edit.slice(5)}월 확정 잔액 고치기 (통장 말일 잔액과 다를 때)`;
+  $("cmInput").value = Number(li.dataset.v).toLocaleString("ko-KR");
+  $("cmEdit").classList.remove("hidden"); $("cmInput").focus();
+});
+$("cmInput").addEventListener("input", e => { const v = e.target.value.replace(/\D/g, ""); e.target.value = v ? Number(v).toLocaleString("ko-KR") : ""; });
+$("cmSave").addEventListener("click", async () => {
+  const v = $("cmInput").value.replace(/\D/g, "");
+  if (!v) return toast("잔액을 넣어주세요");
+  try { await api("/api/admin/balance/month", { ym: CM.edit, amount: v }); $("cmEdit").classList.add("hidden"); toast(`${+CM.edit.slice(5)}월 확정 잔액을 ${won(v)}으로 고쳤어요`); loadMonths(); }
+  catch (e) { adminFail(e); }
+});
 $("balInput").addEventListener("input", e => { const v = e.target.value.replace(/\D/g, ""); e.target.value = v ? Number(v).toLocaleString("ko-KR") : ""; });
 $("balSave").addEventListener("click", async () => {
   const v = $("balInput").value.replace(/\D/g, "");

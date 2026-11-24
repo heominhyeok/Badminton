@@ -107,9 +107,19 @@ def init_db():
             admin_id TEXT NOT NULL, created_at TEXT NOT NULL
         );
         ''')
-        con.execute('''CREATE TABLE IF NOT EXISTS withdrawal (   -- 폰 알림으로 들어온 출금 기록 (통장 잔액 계산용)
-            id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT NOT NULL, raw TEXT NOT NULL,
-            receiver TEXT, amount INTEGER NOT NULL)''')
+        con.execute('''CREATE TABLE IF NOT EXISTS ledger (   -- 통장관리: 날짜별 수입·지출 (결산서 내역)
+            id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL,
+            kind TEXT NOT NULL,                  -- 수입 | 지출
+            title TEXT NOT NULL, amount INTEGER NOT NULL,
+            src TEXT NOT NULL DEFAULT 'manual',  -- manual = 관리자가 적음, bank = 출금 알림 (잔액 계산에 씀)
+            at TEXT, raw TEXT, created_at TEXT NOT NULL)''')
+        con.execute('''CREATE TABLE IF NOT EXISTS month_close (   -- 달별 확정 잔액 (그 달 말일 기준, 달이 끝나면 자동으로 넣음)
+            ym TEXT PRIMARY KEY, balance INTEGER NOT NULL, at TEXT NOT NULL,
+            auto INTEGER NOT NULL DEFAULT 1)''')     # 1 = 자동 계산, 0 = 관리자가 고침
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='withdrawal'").fetchone():
+            con.execute('''INSERT INTO ledger(date, kind, title, amount, src, at, raw, created_at)
+                           SELECT substr(received_at,1,10), '지출', COALESCE(receiver,'출금'), amount, 'bank', received_at, raw, received_at FROM withdrawal''')
+            con.execute('DROP TABLE withdrawal')
         for k, v in DEFAULT_SETTINGS.items():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
         if 'fee_note' not in [r[1] for r in con.execute('PRAGMA table_info(deposit)')]:
@@ -516,7 +526,7 @@ def bal_base(con):
 def bal_flow(con, a, b):
     """a 초과 ~ b 이하 사이 입금 합계·건수, 출금 합계·건수"""
     d = con.execute('SELECT COALESCE(SUM(amount),0) s, COUNT(amount) n FROM deposit WHERE amount IS NOT NULL AND received_at>? AND received_at<=?', (a, b)).fetchone()
-    w = con.execute('SELECT COALESCE(SUM(amount),0) s, COUNT(*) n FROM withdrawal WHERE received_at>? AND received_at<=?', (a, b)).fetchone()
+    w = con.execute("SELECT COALESCE(SUM(amount),0) s, COUNT(*) n FROM ledger WHERE src='bank' AND kind='지출' AND at>? AND at<=?", (a, b)).fetchone()
     return d['s'], d['n'], w['s'], w['n']
 
 
@@ -529,6 +539,46 @@ def balance_at(con, t):
     d, _, w, _ = bal_flow(con, t, at); return base - d + w
 
 
+def close_months(con):
+    """잔액을 맞춘 달부터 끝난 달까지, 아직 확정 안 된 달은 말일 기준 잔액(다음 달 1일 0시 직전)으로 자동 확정"""
+    base, at = bal_base(con)
+    if base is None: return
+    ym, cur = at[:7], now()[:7]
+    while ym < cur:
+        if not con.execute('SELECT 1 FROM month_close WHERE ym=?', (ym,)).fetchone():
+            con.execute('INSERT INTO month_close(ym, balance, at, auto) VALUES (?,?,?,1)',
+                        (ym, balance_at(con, club.ym_add(ym, 1) + '-01 00:00:00'), now()))
+        ym = club.ym_add(ym, 1)
+
+
+def month_end_balance(con, ym):
+    """그 달 말 잔액: 확정된 값이 있으면 그것, 없으면 계산 (이번 달이면 지금)"""
+    r = con.execute('SELECT balance FROM month_close WHERE ym=?', (ym,)).fetchone()
+    if r: return r['balance']
+    return balance_at(con, min(club.ym_add(ym, 1) + '-01 00:00:00', now()))
+
+
+def admin_balance_months(h, q, d):
+    """달별 확정 잔액 목록 (최근 달 먼저) + 이번 달은 진행 중(지금 잔액)"""
+    with db() as con:
+        close_months(con)
+        rows = [dict(r) for r in con.execute('SELECT ym, balance, at, auto FROM month_close ORDER BY ym DESC')]
+        base, at = bal_base(con)
+        live = None if base is None else {'ym': now()[:7], 'balance': balance_at(con, now())}
+    h.json({'months': rows, 'live': live})
+
+
+def admin_balance_month_set(h, q, d):
+    """확정 잔액을 관리자가 고침 (통장 말일 잔액과 다를 때)"""
+    ym = clean(d.get('ym'), 7)
+    v = re.sub(r'[,\s원]', '', str(d.get('amount') or ''))
+    if not re.fullmatch(r'\d{4}-\d{2}', ym) or ym >= now()[:7]: raise ApiError('끝난 달만 고칠 수 있어요')
+    if not re.fullmatch(r'\d{1,12}', v): raise ApiError('잔액을 숫자로 넣어주세요')
+    with db() as con:
+        con.execute('INSERT OR REPLACE INTO month_close(ym, balance, at, auto) VALUES (?,?,?,0)', (ym, int(v), now()))
+    h.json({'ok': True})
+
+
 def admin_balance(h, q, d):
     """계좌 관리: 지금 계좌 + 현재 잔액 (기준 잔액 + 그 뒤 입금 − 출금) + 최근 출금"""
     s = settings(defaults=True)
@@ -536,9 +586,9 @@ def admin_balance(h, q, d):
         base, at = bal_base(con)
         dep = dn = wd = wn = 0
         if base is not None: dep, dn, wd, wn = bal_flow(con, at, now())
-        last = con.execute("""SELECT received_at, raw FROM (SELECT received_at, raw FROM deposit UNION ALL SELECT received_at, raw FROM withdrawal)
+        last = con.execute("""SELECT received_at, raw FROM (SELECT received_at, raw FROM deposit UNION ALL SELECT at AS received_at, raw FROM ledger WHERE src='bank')
                               WHERE raw LIKE '%잔액%' ORDER BY received_at DESC LIMIT 1""").fetchone()
-        outs = [dict(r) for r in con.execute('SELECT received_at, receiver, amount FROM withdrawal ORDER BY received_at DESC LIMIT 10')]
+        outs = [dict(r) for r in con.execute("SELECT at AS received_at, title AS receiver, amount FROM ledger WHERE src='bank' AND kind='지출' ORDER BY at DESC LIMIT 10")]
     bank = None
     if last:
         m = re.search(r'잔액\s*([\d,]+)\s*원', last['raw'])
@@ -546,6 +596,47 @@ def admin_balance(h, q, d):
     h.json({'bank_name': s['bank_name'], 'account_no': s['account_no'], 'holder': s['holder'],
             'base': base, 'base_at': at, 'dep': dep, 'dep_n': dn, 'wd': wd, 'wd_n': wn,
             'balance': None if base is None else base + dep - wd, 'bank': bank, 'outs': outs})
+
+
+def admin_book(h, q, d):
+    """통장관리: 그날 수입·지출 목록 + 그날·그 달 합계"""
+    date = q.get('date') or today()
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜가 잘못됐어요')
+    with db() as con:
+        items = [dict(r) for r in con.execute('SELECT id, date, kind, title, amount, src, at FROM ledger WHERE date=? ORDER BY id', (date,))]
+        mon = {r['kind']: r['s'] for r in con.execute('SELECT kind, SUM(amount) s FROM ledger WHERE substr(date,1,7)=? GROUP BY kind', (date[:7],))}
+    h.json({'date': date, 'items': items,
+            'in': sum(i['amount'] for i in items if i['kind'] == '수입'), 'out': sum(i['amount'] for i in items if i['kind'] == '지출'),
+            'month_in': mon.get('수입', 0), 'month_out': mon.get('지출', 0)})
+
+
+def admin_book_save(h, q, d):
+    """통장관리 한 줄 추가·수정. 출금 알림으로 들어온 줄은 항목 이름만 고침 (금액·날짜는 은행 기준)"""
+    title = clean(d.get('title'), 40)
+    if not title: raise ApiError('항목을 적어주세요')
+    with db() as con:
+        if d.get('id'):
+            row = con.execute('SELECT src FROM ledger WHERE id=?', (d.get('id'),)).fetchone()
+            if not row: raise ApiError('내역을 찾을 수 없어요', 404)
+            if row['src'] == 'bank':
+                con.execute('UPDATE ledger SET title=? WHERE id=?', (title, d.get('id')))
+                return h.json({'ok': True})
+        kind, date = d.get('kind'), clean(d.get('date'), 10)
+        amount = re.sub(r'[,\s원]', '', str(d.get('amount') or ''))
+        if kind not in ('수입', '지출'): raise ApiError('수입인지 지출인지 골라주세요')
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜가 잘못됐어요')
+        if not re.fullmatch(r'\d{1,11}', amount) or int(amount) <= 0: raise ApiError('금액을 숫자로 넣어주세요')
+        if d.get('id'):
+            con.execute('UPDATE ledger SET date=?, kind=?, title=?, amount=? WHERE id=?', (date, kind, title, int(amount), d.get('id')))
+        else:
+            con.execute("INSERT INTO ledger(date, kind, title, amount, src, created_at) VALUES (?,?,?,?,'manual',?)", (date, kind, title, int(amount), now()))
+    h.json({'ok': True})
+
+
+def admin_book_delete(h, q, d):
+    with db() as con:
+        con.execute('DELETE FROM ledger WHERE id=?', (d.get('id'),))
+    h.json({'ok': True})
 
 
 def admin_balance_set(h, q, d):
@@ -590,7 +681,9 @@ def hook_deposit(h, q, d):
         w = parse_withdraw(raw)
         if w:
             with LOCK, db() as con:
-                con.execute('INSERT INTO withdrawal(received_at, raw, receiver, amount) VALUES (?,?,?,?)', (now(), raw[:500], w[0], w[1]))
+                t = now()
+                con.execute("INSERT INTO ledger(date, kind, title, amount, src, at, raw, created_at) VALUES (?,'지출',?,?,'bank',?,?,?)",
+                            (t[:10], w[0], w[1], t, raw[:500], t))
             hook_log(f'출금 | 받는사람={w[0]} 금액={w[1]} | {raw[:200]}')
             return h.json({'ok': True, 'result': f'출금 {w[1]:,}원을 기록했어요 (잔액 계산용)'})
         hook_log(f'무시(입금 아님) | {raw[:200]}')
@@ -1315,21 +1408,30 @@ def admin_club_report(h, q, d):
                       'detail': ', '.join(f"{p['name']}{'(신입)' if p['new'] and not all(x['new'] for x in pre) else ''} {p['months']}개월" for p in pre),
                       'count': sum(p['months'] for p in pre), 'unit': fee, 'amount': sum(p['amount'] for p in pre)})
     lines.append({'kind': 'guest', 'title': f"게스트비 ({g['n']}명)", 'count': g['n'], 'amount': g['s']})
-    # 통장 잔액 기준 (기준 잔액을 맞춘 뒤에만): 전월이월 = 전달 말 잔액, 잔액 = 그 달 말(이번 달이면 지금), 지출 = 출금 알림
+    # 통장관리 장부: 수입(수기)은 수입 칸에 한 줄씩, 지출(수기 + 출금 알림)은 지출 칸에
+    with db() as con:
+        book = [dict(r) for r in con.execute("SELECT date, kind, title, amount, src FROM ledger WHERE substr(date,1,7)=? ORDER BY date, id", (ym,))]
+    for b_ in book:
+        if b_['kind'] == '수입':
+            lines.append({'kind': 'book', 'date': b_['date'], 'title': b_['title'], 'amount': b_['amount']})
+    outs = [{'date': b_['date'], 'title': b_['title'], 'amount': b_['amount']} for b_ in book if b_['kind'] == '지출']
+    spend = sum(o['amount'] for o in outs)
+    # 통장 잔액 기준 (기준 잔액을 맞춘 뒤에만): 전월이월 = 전달 말 잔액, 잔액 = 그 달 말(이번 달이면 지금)
     nxt = club.ym_add(ym, 1) + '-01 00:00:00'
     start, end = ym + '-01 00:00:00', min(nxt, now())
     bal = None
     with db() as con:
         if bal_base(con)[0] is not None and start <= now():
-            outs = [dict(r) for r in con.execute('SELECT received_at, receiver, amount FROM withdrawal WHERE received_at>? AND received_at<=? ORDER BY received_at', (start, end))]
-            bal = {'prev': balance_at(con, start), 'end': balance_at(con, end), 'spend': sum(o['amount'] for o in outs), 'outs': outs}
-            bal['income'] = bal['end'] - bal['prev'] + bal['spend']      # 통장에 실제로 들어온 돈
+            close_months(con)
+            bal = {'prev': month_end_balance(con, prev), 'end': month_end_balance(con, ym)}
+            bank_out = con.execute("SELECT COALESCE(SUM(amount),0) FROM ledger WHERE src='bank' AND kind='지출' AND at>? AND at<=?", (start, end)).fetchone()[0]
+            bal['income'] = bal['end'] - bal['prev'] + bank_out            # 통장에 실제로 들어온 돈
     income = sum(l['amount'] for l in lines)
-    if bal and bal['income'] > income:                                   # 회비·게스트비 말고 들어온 돈
+    if bal and bal['income'] > income:                                   # 회비·게스트비·적은 수입 말고 들어온 돈
         lines.append({'kind': 'etc', 'title': '기타 입금', 'amount': bal['income'] - income})
         income = bal['income']
     h.json({
-        'month': ym, 'fee': fee, 'lines': lines, 'income': income, 'bal': bal,
+        'month': ym, 'fee': fee, 'lines': lines, 'income': income, 'bal': bal, 'outs': outs, 'spend': spend,
         'new': names(new), 'quit': names(quit_),
         'sick': [m['name'] for m in members if status.get(m['id']) == '병가'],
         'trip': [m['name'] for m in members if status.get(m['id']) == '출장'],
@@ -1445,6 +1547,11 @@ ROUTES = {
     ('GET', '/api/admin/club/report'): admin_club_report,
     ('GET', '/api/admin/balance'): admin_balance,
     ('POST', '/api/admin/balance/set'): admin_balance_set,
+    ('GET', '/api/admin/balance/months'): admin_balance_months,
+    ('POST', '/api/admin/balance/month'): admin_balance_month_set,
+    ('GET', '/api/admin/book'): admin_book,
+    ('POST', '/api/admin/book/save'): admin_book_save,
+    ('POST', '/api/admin/book/delete'): admin_book_delete,
     ('POST', '/api/hook/deposit'): hook_deposit,
 }
 
