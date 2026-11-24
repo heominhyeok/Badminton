@@ -268,6 +268,11 @@
   .ss-list .dep .time{width:64px}
   .dep .who .tag-link{display:inline-block;border:0;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;margin:3px 0 0 4px;color:#fff;background:var(--ink);vertical-align:0}
   .ls-list{flex:1;min-height:0;overflow-y:auto;margin-top:8px;padding:2px}
+  .bar .v .ppl{border:0;background:var(--field);color:var(--ink);font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;margin-left:6px}
+  .split .ppl-card{border:0;font:inherit;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.25);color:inherit}
+  #tabStats.club .split .ppl-card{background:rgba(63,42,140,.1)}
+  .ps-list .ava{font-size:12px;color:var(--sub)}
+  .ps-list .amt{font-size:14px;font-weight:700}
   .cand.done-g{opacity:.45}
   .cand .st-w{color:var(--coral);background:var(--coral-soft)}
   .cand .st-p{color:var(--green);background:var(--green-soft)}
@@ -631,7 +636,7 @@
       <div class="acard green" style="margin-bottom:8px">
         <span class="t" id="sTitle"></span>
         <span class="total">
-          <span class="split"><span id="sCountWrap">게스트 <b class="num" id="sCount">0</b>명</span></span>
+          <span class="split"><button type="button" class="ppl-card" id="sCountWrap">게스트 <b class="num" id="sCount">0</b>명</button></span>
           <span class="big num" id="sSum">0원</span>
         </span>
       </div>
@@ -873,6 +878,16 @@
     <div class="mdate"><span>연도</span><button type="button" id="xPrev" aria-label="이전 해">‹</button><b id="xYear"></b><button type="button" id="xNext" aria-label="다음 해">›</button></div>
     <button class="cta" type="button" id="xGo" style="margin-top:12px">다운로드</button>
     <button class="sheet-close" type="button" id="xClose">닫기</button>
+  </div>
+</div>
+
+<!-- 통계: 누가 냈는지 이름 목록 -->
+<div class="sheet-bg hidden" id="pSheet">
+  <div class="sheet tall" role="dialog" aria-modal="true" aria-labelledby="psTitle">
+    <h3 id="psTitle"></h3>
+    <p class="sheet-sub" id="psSub"></p>
+    <ul class="list ss-list ps-list" id="psList"></ul>
+    <button class="sheet-close" type="button" id="psClose">닫기</button>
   </div>
 </div>
 
@@ -1862,7 +1877,7 @@ async function loadStats(){
     $("sLabel").textContent = ST.mode === "day" ? `${y}년 ${+m}월` : `${ST.year}년`;
     const what = ST.kind === "club" ? (ST.mode === "day" ? "분 회비" : "분 회비 (달별)") : " 게스트비";
     $("sTitle").textContent = ST.mode === "day" ? `${+m}월${what}` : `${ST.year}년${what}`;
-    $("sCountWrap").innerHTML = `${ST.kind === "club" ? "낸 회원" : "게스트"} <b class="num" id="sCount">${r.total_count}</b>명`;
+    $("sCountWrap").innerHTML = `${ST.kind === "club" ? "낸 회원" : "게스트"} <b class="num" id="sCount">${r.total_count}</b>명 ›`;
     $("sSum").textContent = won(r.total_sum);
     renderStats();
   } catch (e) { adminFail(e); }
@@ -1878,7 +1893,7 @@ function renderStats(){
     <li class="bar">
       <span class="k num">${ST.mode === "day" ? shortDate(r.key) + (ST.kind === "club" && r.key.slice(0, 7) < ST.month ? "<small> 선납</small>" : "") : (+r.key.slice(5)) + "월"}</span>
       <span class="track"><span class="fill" style="width:${Math.round(r.sum / max * 100)}%"></span></span>
-      <span class="v num"><b>${won(r.sum)}</b><span>${r.count}명</span></span>
+      <span class="v num"><b>${won(r.sum)}</b><button type="button" class="ppl" data-pk="${r.key}">${r.count}명 ›</button></span>
     </li>`).join("")
     : `<li class="empty"><div><b>${ST.kind === "club" ? "이 기간에 낸 회비가 없어요" : "입금 완료된 게스트가 없어요"}</b>${ST.mode === "day" ? "다른 달을 골라보세요" : "다른 연도를 골라보세요"}</div></li>`;
 }
@@ -1897,6 +1912,28 @@ function shiftPeriod(n){
 }
 $("sPrev").addEventListener("click", () => shiftPeriod(-1));
 $("sNext").addEventListener("click", () => shiftPeriod(1));
+/* 통계 '몇 명' 누르면 누가 냈는지 이름 목록 (게스트비·회비 둘 다) */
+async function openPeople(key){
+  const what = ST.kind === "club" ? "회비" : "게스트비";
+  const when = key ? (ST.mode === "day" ? shortDate(key) : `${ST.year}년 ${+key.slice(5)}월`) : (ST.mode === "day" ? `${+ST.month.slice(5)}월 전체` : `${ST.year}년 전체`);
+  $("psTitle").textContent = `${when} ${what}`;
+  $("psSub").textContent = ST.kind === "club" ? (ST.mode === "day" ? `${+ST.month.slice(5)}월분 회비 기준` : "회비 달 기준") : "입금완료 게스트";
+  $("psList").innerHTML = ""; $("pSheet").classList.remove("hidden");
+  try {
+    const q = new URLSearchParams({ kind: ST.kind, mode: ST.mode, key: key || "", month: ST.month, year: ST.year });
+    const r = await api("/api/admin/stats/people?" + q);
+    $("psSub").textContent += ` · ${r.people.length}명 · ${won(r.total)}`;
+    $("psList").innerHTML = r.people.length ? r.people.map((p, i) => `<li class="item">
+        <span class="ava">${i + 1}</span>
+        <span class="who"><b>${esc(p.name)}</b>${p.tag ? `<i class="role">${esc(p.tag)}</i>` : ""}<span>${esc(p.detail)}</span></span>
+        <span class="amt num">${won(p.amount)}</span></li>`).join("")
+      : `<li class="empty"><div><b>이름이 없어요</b></div></li>`;
+  } catch (e) { adminFail(e); }
+}
+$("sList").addEventListener("click", e => { const b = e.target.closest("[data-pk]"); if (b) openPeople(b.dataset.pk); });
+$("sCountWrap").addEventListener("click", () => openPeople(""));
+$("pSheet").addEventListener("click", e => { if (e.target.id === "pSheet") $("pSheet").classList.add("hidden"); });
+$("psClose").addEventListener("click", () => $("pSheet").classList.add("hidden"));
 $("sPgPrev").addEventListener("click", () => { ST.page--; renderStats(); });
 $("sPgNext").addEventListener("click", () => { ST.page++; renderStats(); });
 

@@ -884,6 +884,47 @@ def admin_delete(h, q, d):
     h.json({'ok': True})
 
 
+def admin_stats_people(h, q, d):
+    """통계에서 사람 수를 눌렀을 때: 누가 냈는지 이름 목록 (게스트비·회비 둘 다)
+    key 가 있으면 그 줄(일별=날짜, 월별=YYYY-MM), 없으면 그 기간 전체(일별=month, 월별=year)"""
+    kind, mode, key = q.get('kind') or '', q.get('mode') or 'day', q.get('key') or ''
+    month, year = q.get('month') or today()[:7], q.get('year') or today()[:4]
+    if not re.fullmatch(r'(\d{4}(-\d{2}(-\d{2})?)?)?', key) or not re.fullmatch(r'\d{4}-\d{2}', month) or not re.fullmatch(r'\d{4}', year):
+        raise ApiError('조건이 잘못됐어요')
+    out = []
+    with db() as con:
+        if kind == 'club':
+            # 회비 달 기준: 일별 줄 = 그 달분을 그 날 낸 사람, 월별 줄 = 그 달분 낸 사람, 전체 = 그 기간
+            if mode == 'day':
+                where, args = ("f.ym=?" + (" AND COALESCE(f.paid_on, f.ym || '-01')=?" if key else ''), [month] + ([key] if key else []))
+            else:
+                where, args = ('f.ym=?', [key]) if key else ('substr(f.ym,1,4)=?', [year])
+            rows = con.execute(f'''SELECT m.name, m.role, f.ym, f.paid_on, f.amount FROM fee f JOIN member m ON m.id=f.member_id
+                                   WHERE f.kind='납부' AND {where} ORDER BY m.sort, f.ym''', args).fetchall()
+            per = {}
+            for r in rows:
+                p = per.setdefault(r['name'], {'name': r['name'], 'role': r['role'], 'yms': [], 'paid': [], 'amount': 0})
+                p['yms'].append(r['ym']); p['paid'].append(r['paid_on'] or ''); p['amount'] += r['amount'] or 0
+            for p in per.values():
+                yms = p['yms']
+                months = f"{int(yms[0][5:])}월분" if len(yms) == 1 else f"{len(yms)}개월분 ({int(yms[0][5:])}~{int(yms[-1][5:])}월)"
+                pd = p['paid'][0]
+                pre = pd and len(yms) == 1 and pd[:7] < yms[0]
+                when = f" · {int(pd[5:7])}/{int(pd[8:10])} 납부{' (선납)' if pre else ''}" if pd and len(yms) == 1 else ''
+                out.append({'name': p['name'], 'tag': p['role'], 'detail': months + when, 'amount': p['amount']})
+        else:
+            if mode == 'day':
+                where, args = ('meet_date=?', [key]) if key else ('substr(meet_date,1,7)=?', [month])
+            else:
+                where, args = ('substr(meet_date,1,7)=?', [key]) if key else ('substr(meet_date,1,4)=?', [year])
+            for r in con.execute(f'''SELECT name, age, gender, level, fee, meet_date FROM guest
+                                     WHERE status='신청완료' AND {where} ORDER BY meet_date, paid_at, id''', args):
+                lv = r['level'] + ('' if r['level'] == '초심' else '급')
+                day = '' if (mode == 'day' and key) else f"{int(r['meet_date'][5:7])}/{int(r['meet_date'][8:10])} · "
+                out.append({'name': r['name'], 'tag': '', 'detail': f"{day}{r['age']} · {r['gender']} · {lv}", 'amount': r['fee']})
+    h.json({'people': out, 'total': sum(p['amount'] or 0 for p in out)})
+
+
 def admin_stats(h, q, d):
     mode = q.get('mode', 'day')
     if q.get('kind') == 'club':
@@ -1229,6 +1270,7 @@ ROUTES = {
     ('POST', '/api/admin/days/off'): admin_day_off,
     ('POST', '/api/admin/delete'): admin_delete,
     ('GET', '/api/admin/stats'): admin_stats,
+    ('GET', '/api/admin/stats/people'): admin_stats_people,
     ('GET', '/api/admin/settings'): admin_settings_get,
     ('GET', '/api/admin/days'): admin_days,
     ('POST', '/api/admin/settings'): admin_settings_save,
