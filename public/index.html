@@ -321,11 +321,11 @@
     </form>
     <div class="cta-wrap" id="applyCta"><button class="cta" id="applyBtn" type="button">신청하고 계좌 받기</button></div>
 
-    <!-- 주말(휴무)에는 신청 입력 대신 이 안내만 -->
+    <!-- 쉬는 날(주말·닫은 평일)에는 신청 입력 대신 이 안내만 -->
     <div id="closedBox" class="hidden">
       <div class="done">
-        <h2>주말에는 운동이 없어요</h2>
-        <p>평일(월~금)에 신청해주세요</p>
+        <h2>오늘은 운동이 없어요</h2>
+        <p>운동하는 날에 신청해주세요</p>
       </div>
     </div>
 
@@ -503,7 +503,7 @@
           <div class="cal-grid" id="calDays"></div>
           <div class="cal-legend"><span><i class="lg-wk"></i>평일 운동</span><span><i class="lg-ex"></i>따로 연 날</span><span><i class="lg-off"></i>쉬는 날</span></div>
         </div>
-        <p class="hint">평일은 자동으로 열려요. 주말 같은 날은 눌러서 운동 정보를 넣으면 열려요</p>
+        <p class="hint">평일은 기본으로 열려요. 날짜를 눌러 평일은 쉬는 날로 닫고, 주말 같은 날은 운동 정보를 넣어 열 수 있어요</p>
         <p class="lbl" style="margin-top:10px">기본 운동 정보 (평일)</p>
         <p class="lbl">모임 이름</p><input name="meet_title" placeholder="정기운동" maxlength="30">
         <div class="grid2">
@@ -578,6 +578,7 @@
       </div>
     </form>
     <button class="cta" type="button" id="dSave" style="margin-top:12px">저장</button>
+    <button class="sheet-close danger hidden" type="button" id="dOff">이 날 쉬는 날로 닫기</button>
     <button class="sheet-close danger hidden" type="button" id="dDel"></button>
     <button class="sheet-close" type="button" id="dClose">닫기</button>
   </div>
@@ -1273,7 +1274,8 @@ function renderCal(){
   let html = "<span></span>".repeat(first);
   for (let d = 1; d <= last; d++) {
     const ds = `${CAL.month}-${String(d).padStart(2, "0")}`, dow = (first + d - 1) % 7;
-    const cls = CAL.days[ds] ? "ex" : (dow === 0 || dow === 6) ? "off" : "wk";
+    const day = CAL.days[ds];
+    const cls = day ? (day.off ? "off" : "ex") : (dow === 0 || dow === 6) ? "off" : "wk";
     html += `<button type="button" class="cal-day ${cls}${ds === CAL.today ? " today" : ""}" data-day="${ds}" ${ds < CAL.today ? "disabled" : ""}>${d}</button>`;
   }
   $("calDays").innerHTML = html;
@@ -1287,16 +1289,19 @@ $("calDays").addEventListener("click", e => {
   const b = e.target.closest("[data-day]"); if (!b || b.disabled) return;
   const ds = b.dataset.day, day = CAL.days[ds], f = $("dForm").elements, D = CAL.defaults;
   const dow = new Date(ds + "T00:00:00").getDay(), weekday = dow > 0 && dow < 6;
-  const v = day || { title: D.meet_title, time: D.meet_time, place: D.meet_place, fee: D.fee, max_guests: D.max_guests };
+  const v = day && !day.off ? day : { title: D.meet_title, time: D.meet_time, place: D.meet_place, fee: D.fee, max_guests: D.max_guests };
   for (const k of ["title", "time", "place", "fee", "max_guests"]) f[k].value = v[k] || "";
   $("dSheet").dataset.day = ds;
   $("dSheetTitle").textContent = fmtDate(ds);
-  $("dSheetSub").textContent = day ? "따로 정보를 넣은 운동일이에요"
-    : weekday ? "평일 기본 운동이에요. 이 날만 정보를 바꿀 수 있어요" : "쉬는 날이에요. 운동 정보를 넣고 저장하면 열려요";
-  $("dSave").textContent = day || weekday ? "저장" : "이 날 운동 열기";
+  for (const x of [$("dOff"), $("dDel")]) if (x.classList.contains("arm")) { x.classList.remove("arm"); x.textContent = x.dataset.t; }
+  const off = day ? !!day.off : !weekday;           // 지금 쉬는 날인지
+  $("dSheetSub").textContent = off ? (weekday ? "쉬는 날로 닫은 평일이에요. 저장하면 다시 열려요" : "쉬는 날이에요. 운동 정보를 넣고 저장하면 열려요")
+    : day ? "따로 정보를 넣은 운동일이에요" : "평일 기본 운동이에요. 이 날만 정보를 바꿀 수 있어요";
+  $("dSave").textContent = off ? "이 날 운동 열기" : "저장";
+  // 평일: 열려 있으면 '쉬는 날로 닫기', 정보 바꾼 날이면 '기본 정보로 되돌리기'도. 주말: 연 날이면 '이 날 운동 닫기'
+  $("dOff").classList.toggle("hidden", off || !weekday);
   $("dDel").textContent = weekday ? "기본 정보로 되돌리기" : "이 날 운동 닫기";
-  $("dDel").classList.remove("arm");
-  $("dDel").classList.toggle("hidden", !day);
+  $("dDel").classList.toggle("hidden", !day || (weekday && off));
   $("dSheet").classList.remove("hidden");
 });
 $("dSheet").addEventListener("click", e => { if (e.target.id === "dSheet" || e.target.id === "dClose") $("dSheet").classList.add("hidden"); });
@@ -1309,17 +1314,28 @@ $("dSave").addEventListener("click", async () => {
     loadCal(); loadPublic();
   } catch (e) { adminFail(e); }
 });
+// 실수 방지: 두 번 눌러야 적용
+function armed(b){
+  if (b.classList.contains("arm")) { b.classList.remove("arm"); b.textContent = b.dataset.t; return true; }
+  b.classList.add("arm"); b.dataset.t = b.textContent; b.textContent = "한 번 더 누르면 적용돼요";
+  setTimeout(() => { if (b.classList.contains("arm")) { b.classList.remove("arm"); b.textContent = b.dataset.t; } }, 2500);
+  return false;
+}
 $("dDel").addEventListener("click", async () => {
-  const b = $("dDel");
-  if (!b.classList.contains("arm")) {
-    b.classList.add("arm"); b.dataset.t = b.textContent; b.textContent = "한 번 더 누르면 적용돼요";
-    setTimeout(() => { if (b.classList.contains("arm")) { b.classList.remove("arm"); b.textContent = b.dataset.t; } }, 2500);
-    return;
-  }
-  b.classList.remove("arm");
+  if (!armed($("dDel"))) return;
   try {
     await api("/api/admin/days/delete", { date: $("dSheet").dataset.day });
     $("dSheet").classList.add("hidden"); toast("적용했어요");
+    loadCal(); loadPublic();
+  } catch (e) { adminFail(e); }
+});
+$("dOff").addEventListener("click", async () => {
+  if (!armed($("dOff"))) return;
+  try {
+    const date = $("dSheet").dataset.day;
+    const r = await api("/api/admin/days/off", { date });
+    $("dSheet").classList.add("hidden");
+    toast(r.guests ? `${fmtDate(date)} 쉬는 날로 닫았어요. 이미 신청한 ${r.guests}명은 명단에 그대로 있어요` : `${fmtDate(date)} 쉬는 날로 닫았어요`);
     loadCal(); loadPublic();
   } catch (e) { adminFail(e); }
 });

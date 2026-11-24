@@ -75,7 +75,7 @@ def init_db():
             must_change INTEGER NOT NULL DEFAULT 1,  -- 1이면 처음 비밀번호(0000) 상태 → 로그인 후 바로 바꿔야 함
             created_at TEXT NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS meet_day (   -- 평일 말고 따로 연 운동일 (주말 등) + 그날 운동 정보
+        CREATE TABLE IF NOT EXISTS meet_day (   -- 캘린더에서 따로 정한 날: 연 날(주말 등)·정보 바꾼 날·쉬는 날(off=1)
             date TEXT PRIMARY KEY,
             title TEXT NOT NULL, time TEXT NOT NULL, place TEXT NOT NULL,
             fee TEXT NOT NULL, max_guests TEXT NOT NULL, created_at TEXT NOT NULL
@@ -88,12 +88,14 @@ def init_db():
         ''')
         for k, v in DEFAULT_SETTINGS.items():
             con.execute('INSERT OR IGNORE INTO setting(key, value) VALUES (?, ?)', (k, v))
+        if 'off' not in [r[1] for r in con.execute('PRAGMA table_info(meet_day)')]:
+            con.execute('ALTER TABLE meet_day ADD COLUMN off INTEGER NOT NULL DEFAULT 0')   # 1 = 그날 쉼
         # 예전 '날짜 지정'(하루만 지정) → 캘린더에서 연 날로 옮기고 지정 값은 비움
         old = con.execute("SELECT value FROM setting WHERE key='meet_date'").fetchone()
         if old and old['value']:
             if old['value'] >= today():
                 d = {r['key']: r['value'] for r in con.execute('SELECT key, value FROM setting')}
-                con.execute('INSERT OR IGNORE INTO meet_day VALUES (?,?,?,?,?,?,?)',
+                con.execute('INSERT OR IGNORE INTO meet_day(date,title,time,place,fee,max_guests,created_at) VALUES (?,?,?,?,?,?,?)',
                             (old['value'], d['meet_title'], d['meet_time'], d['meet_place'], d['fee'], d['max_guests'], now()))
             con.execute("UPDATE setting SET value='' WHERE key='meet_date'")
         # 한 번만: 주말 휴무 전(2026-11-23 이전)에 주말 날짜로 들어온 신청 → 다음 월요일 명단으로 옮김
@@ -111,17 +113,21 @@ def init_db():
 
 def settings(defaults=False):
     """운동 정보. 운동일은 항상 오늘(한국시간 자정에 바뀜).
-    평일(월~금)은 기본 정보로 열림, 주말 등은 캘린더에서 연 날(meet_day)만 열림 (사용자 결정 2026-11-24).
+    평일(월~금)은 기본으로 열림(캘린더에서 쉬는 날로 닫을 수 있음), 주말 등은 캘린더에서 연 날만 열림 (사용자 결정 2026-11-24).
     연 날은 그날 정보(이름·시간·장소·게스트비·정원)로 덮어씀. defaults=True 면 기본값 그대로."""
     with db() as con:
         s = {r['key']: r['value'] for r in con.execute('SELECT key, value FROM setting')}
         day = con.execute('SELECT * FROM meet_day WHERE date=?', (today(),)).fetchone()
     s['meet_date'] = today()
     if defaults: return s
-    if day:
+    if day and day['off']:
+        s['closed'] = True
+    elif day:
         s.update(meet_title=day['title'], meet_time=day['time'], meet_place=day['place'],
                  fee=day['fee'], max_guests=day['max_guests'])
-    s['closed'] = not day and datetime.now(KST).weekday() >= 5
+        s['closed'] = False
+    else:
+        s['closed'] = datetime.now(KST).weekday() >= 5
     return s
 
 
@@ -384,7 +390,7 @@ def apply(h, q, d):
     if gender not in ('남', '여'): raise ApiError('성별을 골라주세요')
     if level not in ('A', 'B', 'C', 'D', '초심'): raise ApiError('급수를 골라주세요')
     s = settings()
-    if s['closed']: raise ApiError('주말에는 운동이 없어요. 평일(월~금)에 신청해주세요')
+    if s['closed']: raise ApiError('오늘은 운동이 없어요. 운동하는 날에 신청해주세요')
     if not s['account_no']: raise ApiError('아직 입금 계좌가 설정되지 않았어요. 총무에게 알려주세요')
     with LOCK, db() as con:
         # 같은 날 이름만 같아도 막음 (다른 브라우저로 다시 신청하는 것 방지, 사용자 결정 2026-11-18)
@@ -797,7 +803,7 @@ def admin_days(h, q, d):
     month = q.get('month') or today()[:7]
     if not re.fullmatch(r'\d{4}-\d{2}', month): raise ApiError('달 형식이 잘못됐어요')
     with db() as con:
-        rows = [dict(r) for r in con.execute('SELECT date,title,time,place,fee,max_guests FROM meet_day WHERE substr(date,1,7)=? ORDER BY date', (month,))]
+        rows = [dict(r) for r in con.execute('SELECT date,title,time,place,fee,max_guests,off FROM meet_day WHERE substr(date,1,7)=? ORDER BY date', (month,))]
     h.json({'month': month, 'today': today(), 'days': rows})
 
 
@@ -811,8 +817,23 @@ def admin_day_save(h, q, d):
     if not fee.isdigit(): raise ApiError('게스트비는 숫자로 입력해주세요')
     if not mx.isdigit(): raise ApiError('정원은 숫자로 입력해주세요')
     with db() as con:
-        con.execute('INSERT OR REPLACE INTO meet_day VALUES (?,?,?,?,?,?,?)', (date, title, time_, place, fee, mx, now()))
+        con.execute('INSERT OR REPLACE INTO meet_day(date,title,time,place,fee,max_guests,created_at,off) VALUES (?,?,?,?,?,?,?,0)',
+                    (date, title, time_, place, fee, mx, now()))
     h.json({'ok': True})
+
+
+def admin_day_off(h, q, d):
+    """그날 쉬는 날로 닫기. 평일은 '쉼' 표시를 남기고, 주말은 연 기록만 지움"""
+    date = clean(d.get('date'), 10)
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜가 잘못됐어요')
+    if date < today(): raise ApiError('지난 날짜는 바꿀 수 없어요')
+    with db() as con:
+        if datetime.strptime(date, '%Y-%m-%d').weekday() < 5:
+            con.execute("INSERT OR REPLACE INTO meet_day(date,title,time,place,fee,max_guests,created_at,off) VALUES (?,'','','','0','0',?,1)", (date, now()))
+        else:
+            con.execute('DELETE FROM meet_day WHERE date=?', (date,))
+        n = con.execute('SELECT COUNT(*) FROM guest WHERE meet_date=?', (date,)).fetchone()[0]
+    h.json({'ok': True, 'guests': n})
 
 
 def admin_day_delete(h, q, d):
@@ -852,6 +873,7 @@ ROUTES = {
     ('POST', '/api/admin/add'): admin_add,
     ('POST', '/api/admin/days/save'): admin_day_save,
     ('POST', '/api/admin/days/delete'): admin_day_delete,
+    ('POST', '/api/admin/days/off'): admin_day_off,
     ('POST', '/api/admin/delete'): admin_delete,
     ('GET', '/api/admin/stats'): admin_stats,
     ('GET', '/api/admin/settings'): admin_settings_get,
