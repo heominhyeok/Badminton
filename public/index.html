@@ -174,6 +174,9 @@
   #admin.viewer .ed{display:none!important}
   .mv{flex:1;min-height:0;display:flex;flex-direction:column}
   #cList{overflow-y:auto}
+  .cnow{display:block;font-size:13px;font-weight:600;margin-top:8px}
+  .cnow b{font-size:17px;font-weight:800}
+  .cnow small{font-size:12px;font-weight:500;opacity:.75}
   .cpaid{font-size:13px;font-weight:600}
   .cpaid b{font-size:26px;font-weight:800;margin:0 2px}
   .item.mem{cursor:pointer}
@@ -553,7 +556,8 @@
       <div class="mv" id="mvList">
         <div class="acard yellow" style="margin-bottom:8px">
           <span class="t"><span id="cTitle">이번 달 회비</span><span class="tag" id="cFeeTag"></span></span>
-          <span class="total" style="margin-top:6px">
+          <span class="cnow" id="cNow"></span>
+          <span class="total" style="margin-top:4px">
             <span class="cpaid" id="cPaid"></span>
             <span class="big num" id="cSum">0원</span>
           </span>
@@ -1372,15 +1376,23 @@ const BADGE = { paid: ["b-paid", "납부"], pre: ["b-paid", "선납"], unpaid: [
 function renderClub(){
   const ms = C.members, now = C.ym;
   const st = new Map(ms.map(m => [m.id, cellOf(m, now)]));
-  const target = ms.filter(m => m.status !== "탈퇴" && !m.exempt && !["병가", "출장", "none"].includes(st.get(m.id).k));
+  // 현재 회원 = 탈퇴 아닌 사람 (활동 + 병가 + 출장)
+  // 납부 기준(이번 달 회비 낼 사람) = 현재 회원 − 회비 면제 − 이번 달 병가·출장 − 다음 달부터 회원(미리 낸 신입)
+  const cur = ms.filter(m => m.status !== "탈퇴");
+  const exempt = cur.filter(m => m.exempt), rest = cur.filter(m => !m.exempt);
+  const away = rest.filter(m => ["병가", "출장"].includes(st.get(m.id).k)), later = rest.filter(m => st.get(m.id).k === "none");
+  const target = rest.filter(m => !away.includes(m) && !later.includes(m));
   const paid = target.filter(m => ["paid", "pre"].includes(st.get(m.id).k));
   const sum = ms.reduce((s, m) => { const r = (C.fmap[m.id] || {})[now]; return s + (r?.kind === "납부" ? (r.amount || C.fee) : 0); }, 0);
   const cnt = s => ms.filter(m => m.status === s).length;
   $("cTitle").textContent = `${+now.slice(5)}월 회비`;
   $("cFeeTag").textContent = `1인 ${won(C.fee)}`;
+  $("cNow").innerHTML = `현재 회원 <b class="num">${cur.length}</b>명 <small>(활동 ${cnt("활동")} · 병가 ${cnt("병가")} · 출장 ${cnt("출장")}) · 탈퇴 ${cnt("탈퇴")}명</small>`;
   $("cPaid").innerHTML = `납부 <b class="num">${paid.length}</b> / ${target.length}명`;
   $("cSum").textContent = won(sum);
-  $("cCounts").textContent = `활동 ${cnt("활동")} · 병가 ${cnt("병가")} · 출장 ${cnt("출장")} · 탈퇴 ${cnt("탈퇴")}`;
+  $("cCounts").textContent = `납부 기준 ${target.length}명 = 현재 회원 ${cur.length}`
+    + (exempt.length ? ` − 면제 ${exempt.length}` : "") + (away.length ? ` − 병가·출장 ${away.length}` : "")
+    + (later.length ? ` − 다음 달부터 ${later.length}` : "");
   const f = C.filter, ul = $("cList");
   if (!ms.length) {
     ul.innerHTML = `<li class="empty"><div><b>아직 회원이 없어요</b>${ME?.super ? "회비 엑셀로 한 번에 가져오거나 한 명씩 추가해요" : "회원을 추가해주세요"}
