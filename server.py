@@ -557,6 +557,21 @@ def admin_deposits(h, q, d):
     h.json({'deposits': rows, 'date': date, 'page': page, 'pages': pages, 'total': total, 'matched': matched, 'today': today(), 'club_fee': club_fee()})
 
 
+def admin_deposit_search(h, q, d):
+    """입금 알림 검색: 날짜 상관없이 입금자 이름(띄어쓰기 무시, 일부만 맞아도)으로, 최근 것부터 200건"""
+    word = re.sub(r'\s+', '', clean(q.get('q'), 20))
+    if not word: raise ApiError('찾을 이름을 입력해주세요')
+    like = '%' + word.replace('\\', '').replace('%', '').replace('_', '') + '%'
+    with db() as con:
+        rows = [dict(r) for r in con.execute(
+            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, g.name guest_name, g.status guest_status,
+                      g.token LIKE 'manual-%' guest_manual
+               FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id
+               WHERE REPLACE(d.sender,' ','') LIKE ? OR REPLACE(COALESCE(d.fee_note,''),' ','') LIKE ? OR REPLACE(COALESCE(g.name,''),' ','') LIKE ?
+               ORDER BY d.id DESC LIMIT 201''', (like, like, like))]
+    h.json({'deposits': rows[:200], 'more': len(rows) > 200, 'club_fee': club_fee()})
+
+
 def admin_deposit_delete(h, q, d):
     """입금 알림 기록 한 줄 삭제 (슈퍼 관리자만). 기록만 지우고 신청 상태는 그대로"""
     with LOCK, db() as con:
@@ -1188,6 +1203,7 @@ ROUTES = {
     ('GET', '/api/admin/users'): users_list,
     ('POST', '/api/admin/users/add'): users_add,
     ('POST', '/api/admin/deposits/delete'): admin_deposit_delete,
+    ('GET', '/api/admin/deposits/search'): admin_deposit_search,
     ('GET', '/api/admin/push/key'): push_key,
     ('POST', '/api/admin/push/subscribe'): push_subscribe,
     ('POST', '/api/admin/push/unsubscribe'): push_unsubscribe,

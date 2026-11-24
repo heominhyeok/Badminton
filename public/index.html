@@ -261,6 +261,11 @@
   .mchip.in{background:#FFF3B0;color:#1E1E1E;font-weight:700}
   .fs-multi{list-style:none;display:flex;flex-direction:column;gap:4px;margin-top:4px;font-size:14px}
   .fs-multi li{background:var(--field);border-radius:10px;padding:9px 12px}
+  .dsearch{display:flex;align-items:center;gap:8px;width:100%;border:0;background:var(--field);color:var(--sub);border-radius:12px;padding:11px 14px;font-size:14px;font-weight:600;margin-bottom:10px;flex:none;text-align:left}
+  .dsearch small{margin-left:auto;font-size:11px;font-weight:500;color:var(--faint)}
+  .sheet.tall{height:82vh;display:flex;flex-direction:column}
+  .ss-list{flex:1;min-height:0;overflow-y:auto}
+  .ss-list .dep .time{width:64px}
   .dep .who .tag-fee{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin:3px 0 0;color:var(--coral);background:var(--coral-soft)}
   .mrow{display:flex;flex-direction:column;gap:4px;min-width:0}
   .mrow span{font-size:12px;color:var(--sub);margin-left:2px}
@@ -629,6 +634,10 @@
         <label><span id="pvLabel"></span><span class="today hidden" id="pvToday">오늘</span><input type="date" id="pvInput" aria-label="날짜 선택"></label>
         <button type="button" id="pvNext" aria-label="다음날">›</button>
       </div>
+      <button type="button" class="dsearch" id="dSearchBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        이름으로 입금 찾기 <small>날짜 상관없이</small>
+      </button>
       <div class="acard slate" style="margin-bottom:8px">
         <span class="t">폰에서 받은 입금 알림</span>
         <span class="s">자동 확인은 이름과 금액이 둘 다 맞을 때만 돼요</span>
@@ -852,6 +861,17 @@
     <div class="mdate"><span>연도</span><button type="button" id="xPrev" aria-label="이전 해">‹</button><b id="xYear"></b><button type="button" id="xNext" aria-label="다음 해">›</button></div>
     <button class="cta" type="button" id="xGo" style="margin-top:12px">다운로드</button>
     <button class="sheet-close" type="button" id="xClose">닫기</button>
+  </div>
+</div>
+
+<!-- 입금 알림 검색 (날짜 상관없이 이름으로) -->
+<div class="sheet-bg hidden" id="sSheet">
+  <div class="sheet field tall" role="dialog" aria-modal="true" aria-labelledby="ssTitle">
+    <h3 id="ssTitle">입금 찾기</h3>
+    <input id="ssInput" type="search" placeholder="입금자 이름 (예: 홍길동)" aria-label="입금자 이름" autocomplete="off">
+    <p class="sheet-sub" id="ssSum" style="margin:8px 2px 4px"></p>
+    <ul class="list ss-list" id="ssList"></ul>
+    <button class="sheet-close" type="button" id="ssClose">닫기</button>
   </div>
 </div>
 
@@ -1657,6 +1677,51 @@ $("xGo").addEventListener("click", async () => {
 /* 입금 알림 기록 */
 const DP = { page: 1, date: "" };    // date 비어 있으면 서버가 오늘로
 let DEPS = {};
+// 입금 한 줄의 처리 상태 표시 (목록·검색 공통)
+function depTag(x){
+  return x.guest_id ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} ${x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
+    : x.fee_note ? `<span class="tag-ok">회비 · ${esc(x.fee_note)}</span>`
+    : x.amount >= DP.clubFee ? `<span class="tag-fee">미정 · 눌러서 회비 처리</span>`
+    : `<span class="tag-add">+ 눌러서 명단 추가</span>`;
+}
+// 처리 안 된 입금을 누르면: 회비 금액 이상이면 회비, 아니면 게스트비
+function openDeposit(x){
+  if (!x || ME?.viewer) return;
+  return x.amount >= DP.clubFee ? openFee(x) : openManual(x);
+}
+/* 입금 검색: 날짜 상관없이 입금자 이름으로 (최근 것부터) */
+let ssTimer, SS = {};
+$("dSearchBtn").addEventListener("click", () => {
+  $("sSheet").classList.remove("hidden");
+  setTimeout(() => $("ssInput").focus(), 50);
+  if (!$("ssInput").value.trim()) { $("ssList").innerHTML = ""; $("ssSum").textContent = "이름 일부만 넣어도 찾아요"; }
+});
+$("ssInput").addEventListener("input", () => { clearTimeout(ssTimer); ssTimer = setTimeout(runSearch, 250); });
+async function runSearch(){
+  const q = $("ssInput").value.trim();
+  if (!q) { $("ssList").innerHTML = ""; $("ssSum").textContent = "이름 일부만 넣어도 찾아요"; return; }
+  try {
+    const r = await api(`/api/admin/deposits/search?q=${encodeURIComponent(q)}`);
+    DP.clubFee = r.club_fee || DP.clubFee || 25000;
+    SS = Object.fromEntries(r.deposits.map(x => [x.id, x]));
+    const sum = r.deposits.reduce((s, x) => s + (x.amount || 0), 0);
+    $("ssSum").textContent = r.deposits.length ? `${r.deposits.length}건 · 합계 ${won(sum)}${r.more ? " · 최근 200건까지 보여요" : ""}` : `'${q}' 이름의 입금이 없어요`;
+    $("ssList").innerHTML = r.deposits.map(x => {
+      const done = x.guest_id || x.fee_note;
+      return `<li class="item dep${done ? "" : " can"}" ${done ? "" : `data-sdep="${x.id}"`}>
+        <span class="time num"><b>${shortDate(x.received_at.slice(0, 10)).replace(/ \(.\)/, "")}</b><span>${x.received_at.slice(2, 4)}년 ${x.received_at.slice(11, 16)}</span></span>
+        <span class="who"><b>${esc(x.sender || "-")}</b>${depTag(x)}</span>
+        <span class="amt num">${x.amount == null ? "-" : won(x.amount)}</span>
+      </li>`;
+    }).join("");
+  } catch (e) { adminFail(e); }
+}
+$("ssList").addEventListener("click", e => {
+  const li = e.target.closest("[data-sdep]"); if (!li || ME?.viewer) return;
+  $("sSheet").classList.add("hidden"); openDeposit(SS[li.dataset.sdep]);
+});
+$("sSheet").addEventListener("click", e => { if (e.target.id === "sSheet") $("sSheet").classList.add("hidden"); });
+$("ssClose").addEventListener("click", () => $("sSheet").classList.add("hidden"));
 async function loadDeposits(){
   try {
     const h = $("dList").clientHeight || 300;
@@ -1675,11 +1740,7 @@ async function loadDeposits(){
     $("dList").innerHTML = r.deposits.length ? r.deposits.map(x => {
       const day = x.received_at.slice(0, 10), hm = x.received_at.slice(11, 16);
       const when = day === r.today ? "오늘" : shortDate(day);
-      const tag = x.guest_id
-        ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} ${x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
-        : x.fee_note ? `<span class="tag-ok">회비 · ${esc(x.fee_note)}</span>`
-        : x.amount >= DP.clubFee ? `<span class="tag-fee">미정 · 눌러서 회비 처리</span>`
-        : `<span class="tag-add">+ 눌러서 명단 추가</span>`;
+      const tag = depTag(x);
       DEPS[x.id] = x;
       const done = x.guest_id || x.fee_note;
       return `<li class="item dep${done ? "" : " can"}" ${done ? "" : `data-dep="${x.id}"`}>
@@ -1695,9 +1756,8 @@ async function loadDeposits(){
 $("dList").addEventListener("click", async e => {
   const b = e.target.closest("[data-ddel]");
   if (!b) {
-    const li = e.target.closest("[data-dep]"); if (!li || ME?.viewer) return;
-    const x = DEPS[li.dataset.dep];
-    return x.amount >= DP.clubFee ? openFee(x) : openManual(x);   // 회비 금액 이상이면 회비, 아니면 게스트비
+    const li = e.target.closest("[data-dep]"); if (!li) return;
+    return openDeposit(DEPS[li.dataset.dep]);
   }
   if (!b.classList.contains("arm")) { b.classList.add("arm"); b.textContent = "삭제"; setTimeout(() => { b.classList.remove("arm"); b.textContent = "✕"; }, 2500); return; }
   try { await api("/api/admin/deposits/delete", { id: +b.dataset.ddel }); toast("알림을 삭제했어요"); loadDeposits(); }
