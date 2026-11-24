@@ -253,6 +253,14 @@ class H(SimpleHTTPRequestHandler):
     def list_directory(self, path):
         self.send_error(404)
 
+    def end_headers(self):
+        # 화면 파일은 매번 새로 확인 → 배포 후 앱을 다시 열면 바로 새 화면 (아이콘 등 이미지는 그대로 캐시)
+        p = self.path.split('?')[0]
+        if p == '/' or p.endswith(('.html', '.js', '.json', '.webmanifest')):
+            if not any(h.startswith(b'Cache-Control') for h in getattr(self, '_headers_buffer', [])):
+                self.send_header('Cache-Control', 'no-cache')
+        super().end_headers()
+
     # 접속 키
     def cookie(self, name):
         for part in (self.headers.get('Cookie') or '').split(';'):
