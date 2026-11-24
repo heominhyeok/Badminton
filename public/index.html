@@ -349,6 +349,7 @@
   .btn-del{display:block;width:100%;border:0;background:none;color:var(--coral);font-size:14px;font-weight:700;padding:12px 0 2px}
   .cm-btn{display:flex;align-items:center;gap:8px;width:100%;border:0;border-radius:12px;background:var(--field);padding:15px 16px;margin-top:12px;font-size:15px;font-weight:700;color:var(--ink);text-align:left}
   .cm-btn span{flex:none} .cm-btn small{flex:1;font-size:12px;font-weight:600;color:var(--sub);text-align:right} .cm-btn b{font-size:17px;color:var(--sub)}
+  .cm-btn.in-book{margin:0 0 10px;flex:none;padding:13px 16px}
   .cm-list .item{cursor:pointer}
   .cm-list .item.live{cursor:default;background:var(--field)}
   .cm-list .amt{font-size:16px;font-weight:800;flex:none}
@@ -725,6 +726,7 @@
       </div>
       <div class="mv hidden" id="dvBook">
         <div class="bk-bal"><span>통장 잔액</span><b class="num" id="bkBal">-</b></div>
+        <button type="button" class="cm-btn in-book" id="cmBtn"><span>달별 확정 잔액</span><small id="cmBtnSub"></small><b>›</b></button>
         <div class="datebar">
           <button type="button" id="bkPrev" aria-label="전날">‹</button>
           <label><span id="bkLabel"></span><span class="today hidden" id="bkToday">오늘</span><input type="date" id="bkInput" aria-label="날짜 선택"></label>
@@ -784,7 +786,6 @@
           <div class="bal-set"><input id="balInput" inputmode="numeric" placeholder="지금 통장 잔액 (원)" autocomplete="off"><button type="button" class="btn-sm y" id="balSave">맞추기</button></div>
           <p class="hint">지금 통장 앱에 보이는 잔액을 넣으면, 이 시각부터 들어온 입금은 더하고 출금은 빼서 계산해요</p>
         </div>
-        <button type="button" class="cm-btn" id="cmBtn"><span>달별 확정 잔액</span><small id="cmBtnSub"></small><b>›</b></button>
         <p class="lbl" style="margin-top:18px">계좌 정보 수정</p>
         <p class="lbl">은행</p>
         <select name="bank_name" required>
@@ -2068,7 +2069,7 @@ const BK = { date: new Date().toLocaleDateString("sv-SE"), items: [], edit: null
 async function loadBook(){
   try {
     const r = await api(`/api/admin/book?date=${BK.date}`);
-    BK.items = r.items;
+    BK.items = r.items; loadMonths();
     $("bkBal").textContent = r.balance === null ? "설정 › 계좌 관리에서 잔액을 맞춰주세요" : won(r.balance);
     $("bkBal").style.fontSize = r.balance === null ? "13px" : "";
     $("bkLabel").textContent = shortDate(r.date); $("bkInput").value = r.date;
@@ -2219,7 +2220,6 @@ async function loadBalance(){
     $("balNow").textContent = r.balance === null ? "잔액을 맞춰주세요" : won(r.balance);
     $("balCalc").textContent = r.balance === null ? "아래에 지금 통장 잔액을 한 번 넣으면 그때부터 자동으로 계산해요"
       : `기준 ${won(r.base)} (${mdhm(r.base_at)}) + 수입 ${won(r.dep)} (${r.dep_n}건) − 지출 ${won(r.wd)} (${r.wd_n}건)`;
-    loadMonths();
     $("balBank").textContent = r.bank ? `마지막 은행 알림의 잔액 ${won(r.bank.amount)} (${mdhm(r.bank.at)})` : "";
 
   } catch (e) { adminFail(e); }
