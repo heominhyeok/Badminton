@@ -334,6 +334,12 @@
   .bal-set{display:flex;gap:8px}
   .bal-set input{flex:1;min-width:0;width:auto}
   .bal-set .btn-sm{flex:none;padding:0 18px}
+  .bk-bal{display:flex;align-items:center;justify-content:space-between;background:var(--field);border-radius:12px;padding:12px 16px;margin-bottom:10px;flex:none}
+  .bk-bal span{font-size:14px;font-weight:600;color:var(--sub)}
+  .bk-bal b{font-size:20px;font-weight:800}
+  .bk-chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:600;padding:4px 2px;cursor:pointer}
+  .bk-chk input{width:20px;height:20px;margin-top:1px;flex:none;accent-color:var(--ink)}
+  .bk-chk small{display:block;font-size:12px;font-weight:500;color:var(--sub);margin-top:2px}
   .bk-sum{display:flex;gap:18px;font-size:14px;font-weight:600;margin-top:8px}
   .bk-sum b{font-size:19px;margin-left:4px}
   .bk-list .amt{font-size:15px;font-weight:700;flex:none}
@@ -718,6 +724,7 @@
       <div class="pager"><button type="button" id="dPgPrev" aria-label="이전 페이지">‹</button><span class="num" id="dPage">1 / 1</span><button type="button" id="dPgNext" aria-label="다음 페이지">›</button></div>
       </div>
       <div class="mv hidden" id="dvBook">
+        <div class="bk-bal"><span>통장 잔액</span><b class="num" id="bkBal">-</b></div>
         <div class="datebar">
           <button type="button" id="bkPrev" aria-label="전날">‹</button>
           <label><span id="bkLabel"></span><span class="today hidden" id="bkToday">오늘</span><input type="date" id="bkInput" aria-label="날짜 선택"></label>
@@ -964,6 +971,7 @@
       <div class="mdate"><span>날짜</span><button type="button" id="bkdPrev" aria-label="전날">‹</button><b id="bkdLabel"></b><button type="button" id="bkdNext" aria-label="다음날">›</button></div>
       <input id="bkTitleIn" maxlength="40" placeholder="항목 (예: 2회차 사용료, 대회 찬조)" aria-label="항목">
       <label class="mfee"><span>금액</span><input id="bkAmt" inputmode="numeric" aria-label="금액"><span>원</span></label>
+      <label class="bk-chk" id="bkSkipWrap"><input type="checkbox" id="bkSkip"><span>이미 입금·출금 알림으로 잡힌 돈이에요<small>체크하면 통장 잔액에 또 더하거나 빼지 않아요</small></span></label>
     </div>
     <div style="height:12px"></div>
     <button class="cta" type="button" id="bkSave">저장</button>
@@ -2061,13 +2069,15 @@ async function loadBook(){
   try {
     const r = await api(`/api/admin/book?date=${BK.date}`);
     BK.items = r.items;
+    $("bkBal").textContent = r.balance === null ? "설정 › 계좌 관리에서 잔액을 맞춰주세요" : won(r.balance);
+    $("bkBal").style.fontSize = r.balance === null ? "13px" : "";
     $("bkLabel").textContent = shortDate(r.date); $("bkInput").value = r.date;
     $("bkToday").classList.toggle("hidden", r.date !== new Date().toLocaleDateString("sv-SE"));
     $("bkIn").textContent = won(r.in); $("bkOut").textContent = won(r.out);
     $("bkMonth").textContent = `${+r.date.slice(5, 7)}월 전체  수입 ${won(r.month_in)} · 지출 ${won(r.month_out)}`;
     $("bkList").innerHTML = r.items.length ? r.items.map(x => `<li class="item" data-bk="${x.id}">
         <span class="kd ${x.kind === "수입" ? "in" : "out"}">${x.kind}</span>
-        <span class="who"><b>${esc(x.title)}</b><span>${x.src === "bank" ? `${x.kind === "수입" ? "입금" : "출금"} 알림 · ${x.at.slice(11, 16)}` : "직접 적음"}</span></span>
+        <span class="who"><b>${esc(x.title)}</b><span>${x.src === "bank" ? `${x.kind === "수입" ? "입금" : "출금"} 알림 · ${x.at.slice(11, 16)}` : x.in_bal ? "직접 적음" : "직접 적음 · 잔액엔 이미 반영"}</span></span>
         <span class="amt num ${x.kind === "수입" ? "in" : "out"}">${x.kind === "수입" ? "+" : "−"}${won(x.amount)}</span>
       </li>`).join("") : `<li class="empty"><div><b>이날 적은 내역이 없어요</b>아래 버튼으로 수입·지출을 적어요</div></li>`;
   } catch (e) { adminFail(e); }
@@ -2085,6 +2095,7 @@ function openBook(x){
   $("bkTitleIn").value = x ? x.title : ""; $("bkAmt").value = x ? Number(x.amount).toLocaleString("ko-KR") : "";
   $("bkAmt").disabled = bank; $("bkdPrev").disabled = bank; $("bkdNext").disabled = bank;
   $("bkDel").classList.toggle("hidden", !x);
+  $("bkSkipWrap").classList.toggle("hidden", bank); $("bkSkip").checked = x ? !x.in_bal : false;
   bkDateShow(); $("bkSheet").classList.remove("hidden");
 }
 $("bkAdd").addEventListener("click", () => openBook());
@@ -2098,7 +2109,7 @@ $("bkSave").addEventListener("click", async () => {
   if (!title) return toast("항목을 적어주세요");
   if (!amount) return toast("금액을 넣어주세요");
   try {
-    await api("/api/admin/book/save", { id: BK.edit?.id, kind, title, amount, date: BK.d });
+    await api("/api/admin/book/save", { id: BK.edit?.id, kind, title, amount, date: BK.d, skip: $("bkSkip").checked });
     $("bkSheet").classList.add("hidden"); BK.date = BK.d;
     toast(`${shortDate(BK.d)} ${kind} ${won(amount)} 저장했어요`); loadBook();
   } catch (e) { adminFail(e); }
@@ -2207,7 +2218,7 @@ async function loadBalance(){
     $("balAcct").textContent = r.account_no ? `${r.bank_name} ${prettyAcct(r.account_no)} ${r.holder}` : "계좌 미설정";
     $("balNow").textContent = r.balance === null ? "잔액을 맞춰주세요" : won(r.balance);
     $("balCalc").textContent = r.balance === null ? "아래에 지금 통장 잔액을 한 번 넣으면 그때부터 자동으로 계산해요"
-      : `기준 ${won(r.base)} (${mdhm(r.base_at)}) + 입금 ${won(r.dep)} (${r.dep_n}건) − 출금 ${won(r.wd)} (${r.wd_n}건)`;
+      : `기준 ${won(r.base)} (${mdhm(r.base_at)}) + 수입 ${won(r.dep)} (${r.dep_n}건) − 지출 ${won(r.wd)} (${r.wd_n}건)`;
     loadMonths();
     $("balBank").textContent = r.bank ? `마지막 은행 알림의 잔액 ${won(r.bank.amount)} (${mdhm(r.bank.at)})` : "";
 

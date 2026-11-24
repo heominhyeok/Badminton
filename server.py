@@ -116,6 +116,8 @@ def init_db():
         con.execute('''CREATE TABLE IF NOT EXISTS month_close (   -- 달별 확정 잔액 (그 달 말일 기준, 달이 끝나면 자동으로 넣음)
             ym TEXT PRIMARY KEY, balance INTEGER NOT NULL, at TEXT NOT NULL,
             auto INTEGER NOT NULL DEFAULT 1)''')     # 1 = 자동 계산, 0 = 관리자가 고침
+        if 'in_bal' not in [r[1] for r in con.execute('PRAGMA table_info(ledger)')]:
+            con.execute('ALTER TABLE ledger ADD COLUMN in_bal INTEGER NOT NULL DEFAULT 1')   # 직접 적은 줄: 1 = 잔액에 반영, 0 = 이미 은행 알림으로 잡힌 돈
         if 'dep_id' not in [r[1] for r in con.execute('PRAGMA table_info(ledger)')]:
             con.execute('ALTER TABLE ledger ADD COLUMN dep_id INTEGER')   # 이자·캐시백 입금 알림에서 온 수입이면 그 입금
         if not con.execute("SELECT 1 FROM setting WHERE key='interest_moved'").fetchone():
@@ -551,10 +553,13 @@ def bal_base(con):
 
 
 def bal_flow(con, a, b):
-    """a 초과 ~ b 이하 사이 입금 합계·건수, 출금 합계·건수"""
+    """a 초과 ~ b 이하 사이 들어온 돈 합계·건수, 나간 돈 합계·건수
+    들어온 돈 = 입금 알림 + 통장관리에 직접 적은 수입, 나간 돈 = 출금 알림 + 직접 적은 지출
+    (직접 적은 줄은 적은 시각 기준, '이미 은행 알림으로 잡힌 돈'(in_bal=0)은 빼서 두 번 안 셈)"""
     d = con.execute('SELECT COALESCE(SUM(amount),0) s, COUNT(amount) n FROM deposit WHERE amount IS NOT NULL AND received_at>? AND received_at<=?', (a, b)).fetchone()
-    w = con.execute("SELECT COALESCE(SUM(amount),0) s, COUNT(*) n FROM ledger WHERE src='bank' AND kind='지출' AND at>? AND at<=?", (a, b)).fetchone()
-    return d['s'], d['n'], w['s'], w['n']
+    mi = con.execute("SELECT COALESCE(SUM(amount),0) s, COUNT(*) n FROM ledger WHERE src='manual' AND in_bal=1 AND kind='수입' AND created_at>? AND created_at<=?", (a, b)).fetchone()
+    w = con.execute("SELECT COALESCE(SUM(amount),0) s, COUNT(*) n FROM ledger WHERE kind='지출' AND (src='bank' OR in_bal=1) AND COALESCE(at, created_at)>? AND COALESCE(at, created_at)<=?", (a, b)).fetchone()
+    return d['s'] + mi['s'], d['n'] + mi['n'], w['s'], w['n']
 
 
 def balance_at(con, t):
@@ -630,11 +635,12 @@ def admin_book(h, q, d):
     date = q.get('date') or today()
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜가 잘못됐어요')
     with db() as con:
-        items = [dict(r) for r in con.execute('SELECT id, date, kind, title, amount, src, at FROM ledger WHERE date=? ORDER BY id', (date,))]
+        items = [dict(r) for r in con.execute('SELECT id, date, kind, title, amount, src, at, in_bal FROM ledger WHERE date=? ORDER BY id', (date,))]
+        balance = balance_at(con, now())
         mon = {r['kind']: r['s'] for r in con.execute('SELECT kind, SUM(amount) s FROM ledger WHERE substr(date,1,7)=? GROUP BY kind', (date[:7],))}
     h.json({'date': date, 'items': items,
             'in': sum(i['amount'] for i in items if i['kind'] == '수입'), 'out': sum(i['amount'] for i in items if i['kind'] == '지출'),
-            'month_in': mon.get('수입', 0), 'month_out': mon.get('지출', 0)})
+            'month_in': mon.get('수입', 0), 'month_out': mon.get('지출', 0), 'balance': balance})
 
 
 def admin_book_save(h, q, d):
@@ -651,12 +657,13 @@ def admin_book_save(h, q, d):
         kind, date = d.get('kind'), clean(d.get('date'), 10)
         amount = re.sub(r'[,\s원]', '', str(d.get('amount') or ''))
         if kind not in ('수입', '지출'): raise ApiError('수입인지 지출인지 골라주세요')
+        in_bal = 0 if d.get('skip') else 1
         if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜가 잘못됐어요')
         if not re.fullmatch(r'\d{1,11}', amount) or int(amount) <= 0: raise ApiError('금액을 숫자로 넣어주세요')
         if d.get('id'):
-            con.execute('UPDATE ledger SET date=?, kind=?, title=?, amount=? WHERE id=?', (date, kind, title, int(amount), d.get('id')))
+            con.execute('UPDATE ledger SET date=?, kind=?, title=?, amount=?, in_bal=? WHERE id=?', (date, kind, title, int(amount), in_bal, d.get('id')))
         else:
-            con.execute("INSERT INTO ledger(date, kind, title, amount, src, created_at) VALUES (?,?,?,?,'manual',?)", (date, kind, title, int(amount), now()))
+            con.execute("INSERT INTO ledger(date, kind, title, amount, src, created_at, in_bal) VALUES (?,?,?,?,'manual',?,?)", (date, kind, title, int(amount), now(), in_bal))
     h.json({'ok': True})
 
 
@@ -1468,7 +1475,7 @@ def admin_club_report(h, q, d):
         if bal_base(con)[0] is not None and start <= now():
             close_months(con)
             bal = {'prev': month_end_balance(con, prev), 'end': month_end_balance(con, ym)}
-            bank_out = con.execute("SELECT COALESCE(SUM(amount),0) FROM ledger WHERE src='bank' AND kind='지출' AND at>? AND at<=?", (start, end)).fetchone()[0]
+            bank_out = con.execute("SELECT COALESCE(SUM(amount),0) FROM ledger WHERE kind='지출' AND (src='bank' OR in_bal=1) AND COALESCE(at, created_at)>? AND COALESCE(at, created_at)<=?", (start, end)).fetchone()[0]
             bal['income'] = bal['end'] - bal['prev'] + bank_out            # 통장에 실제로 들어온 돈
     income = sum(l['amount'] for l in lines)
     if bal and bal['income'] > income:                                   # 회비·게스트비·적은 수입 말고 들어온 돈
