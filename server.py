@@ -837,10 +837,13 @@ def admin_delete(h, q, d):
 
 def admin_stats(h, q, d):
     mode = q.get('mode', 'day')
-    if q.get('kind') == 'club':      # 회비: 낸 날(납부일) 기준, 사람 수는 그 기간에 낸 회원 수
-        per = 'month' if mode == 'month' else 'day'
-        key = 'substr(paid_on,1,7)' if per == 'month' else 'paid_on'
-        rng = ('substr(paid_on,1,4)', q.get('year') or today()[:4]) if per == 'month' else ('substr(paid_on,1,7)', q.get('month') or today()[:7])
+    if q.get('kind') == 'club':
+        # 회비는 '회비 달' 기준 (사용자 결정 2026-11-24): 11월 = 11월분 회비. 언제 냈든(선납 포함) 그 달로 셈
+        #  일별: 그 달분 회비를 낸 날짜별로 / 월별: 그 해 달마다 (몇 월분인지)
+        if mode == 'month':
+            key, rng = 'ym', ('substr(ym,1,4)', q.get('year') or today()[:4])
+        else:
+            key, rng = "COALESCE(paid_on, ym || '-01')", ('ym', q.get('month') or today()[:7])
         with db() as con:
             rows = [{'key': r['k'], 'count': r['n'], 'sum': r['s'] or 0} for r in con.execute(
                 f"SELECT {key} k, COUNT(DISTINCT member_id) n, SUM(amount) s FROM fee WHERE kind='납부' AND {rng[0]}=? GROUP BY k ORDER BY k", (rng[1],))]
