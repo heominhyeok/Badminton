@@ -266,10 +266,13 @@ _STYLES = (
     '<fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/></patternFill></fill></fills>'
     '<borders count="2"><border/><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/></border></borders>'
     '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-    '<cellXfs count="9">' + ''.join(
-        f'<xf numFmtId="0" fontId="{f}" fillId="{fl}" borderId="{b}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
-        '<alignment horizontal="center" vertical="center"/></xf>'
-        for f, fl, b in ((0, 0, 0), (1, 0, 0), (2, 2, 1), (0, 0, 1), (3, 0, 1), (4, 0, 1), (0, 3, 1), (0, 4, 1), (2, 0, 1))) +
+    # 9번 = 금액 (천 단위 쉼표 #,##0 — 엑셀 기본 서식 3번)
+    '<cellXfs count="10">' + ''.join(
+        f'<xf numFmtId="{nf}" fontId="{f}" fillId="{fl}" borderId="{b}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+        f'<alignment horizontal="{al}" vertical="center"/></xf>'
+        for nf, f, fl, b, al in ((0, 0, 0, 0, 'center'), (0, 1, 0, 0, 'center'), (0, 2, 2, 1, 'center'), (0, 0, 0, 1, 'center'),
+                                 (0, 3, 0, 1, 'center'), (0, 4, 0, 1, 'center'), (0, 0, 3, 1, 'center'), (0, 0, 4, 1, 'center'),
+                                 (0, 2, 0, 1, 'center'), (3, 2, 0, 1, 'right'))) +
     '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')
 
 _CT = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -327,12 +330,19 @@ def fee_sheet(year, members, fees):
     months = [f'{y}-{m:02d}' for m in range(1, 13)]
     grid = [[(f'상도초클럽 회비현황({y}년)', 1)] + [('', 1)] * 15, [],
             [(h, 2) for h in ['번호', '이름', '임 원'] + [f'{m}월' for m in range(1, 13)] + ['비고']]]
-    paid_n, with_rest, total = [0] * 12, [0] * 12, [0] * 12
+    paid_n, total = [0] * 12, [0] * 12
+    joined, quit_n, members_n = [0] * 12, [0] * 12, [0] * 12
+    # 처음 기록이 시작된 달에 있던 회원은 '원래 회원' (가입자로 세지 않음)
+    first_since = min((m.get('since') or months[0] for m in members), default=months[0])
     no = 0
     for m in members:
         rows = fees.get(m['id'], {})
         left = min((ym for ym, r in rows.items() if r['kind'] == '탈퇴'), default=None)
         since = m.get('since') or months[0]
+        for i, ym in enumerate(months):
+            if since == ym and since != first_since: joined[i] += 1      # 그 달 가입
+            if left == ym: quit_n[i] += 1                                 # 그 달 탈퇴
+            if since <= ym and not (left and left <= ym): members_n[i] += 1   # 그 달 회원 (병가·출장·면제 포함)
         if (left and left < months[0]) or since > months[-1]:
             continue                                   # 그 해에 회원이 아니었음
         no += 1
@@ -344,10 +354,10 @@ def fee_sheet(year, members, fees):
                 pre = bool(p) and p[:7] < ym
                 txt = (f'{int(p[5:7])}월 {int(p[8:10])}일' + (' (선납)' if pre else '')) if p else '납부'
                 line.append((txt, 6 if pre else 3))
-                paid_n[i] += 1; with_rest[i] += 1; total[i] += r.get('amount') or 0
+                total[i] += r.get('amount') or 0
+                if not m['exempt']: paid_n[i] += 1          # 납부 인원은 재무·총무(회비 면제) 제외
             elif r:
                 line.append((r['kind'], 5 if r['kind'] == '탈퇴' else 4))
-                if r['kind'] in ('병가', '출장'): with_rest[i] += 1
             elif (left and ym > left) or ym < since:
                 line.append(('', 7))
             elif m['exempt']:
@@ -362,8 +372,11 @@ def fee_sheet(year, members, fees):
         line.append((' '.join(note), 5 if '탈 퇴' in note else 3))
         grid.append(line)
     grid.append([])
-    for label, vals, tail in (('납부 인원', paid_n, ''), ('병가·출장 포함', with_rest, ''), ('회비 합계', total, sum(total))):
-        grid.append([(label, 2), ('', 2), ('', 2)] + [(n, 3) for n in vals] + [(tail, 3)])
+    foot = (('납부 인원 (재무·총무 제외)', paid_n, ''), ('가입자', joined, sum(joined)), ('탈퇴자', quit_n, sum(quit_n)),
+            ('총회원 (병가·출장 포함)', members_n, ''), ('회비 합계', total, sum(total)))
+    for label, vals, tail in foot:
+        st = 9 if label == '회비 합계' else 3          # 금액은 천 단위 쉼표
+        grid.append([(label, 2), ('', 2), ('', 2)] + [(v, st) for v in vals] + [(tail, st)])
     n = len(grid)
-    merges = ['A1:P1', f'A{n-2}:C{n-2}', f'A{n-1}:C{n-1}', f'A{n}:C{n}']
-    return write_xlsx(f'회비내역({y})', grid, [6, 10, 8] + [12] * 12 + [24], merges)
+    merges = ['A1:P1'] + [f'A{r}:C{r}' for r in range(n - len(foot) + 1, n + 1)]
+    return write_xlsx(f'회비내역({y})', grid, [6, 10, 10] + [12] * 12 + [24], merges)
