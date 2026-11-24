@@ -884,6 +884,9 @@ def admin_delete(h, q, d):
     h.json({'ok': True})
 
 
+PAID_SQL = "COALESCE(paid_on, ym || '-01')"   # 회비를 낸 날 (날짜 없는 예전 기록은 그 회비 달 1일)
+
+
 def admin_stats_people(h, q, d):
     """통계에서 사람 수를 눌렀을 때: 누가 냈는지 이름 목록 (게스트비·회비 둘 다)
     key 가 있으면 그 줄(일별=날짜, 월별=YYYY-MM), 없으면 그 기간 전체(일별=month, 월별=year)"""
@@ -894,24 +897,27 @@ def admin_stats_people(h, q, d):
     out = []
     with db() as con:
         if kind == 'club':
-            # 회비 달 기준: 일별 줄 = 그 달분을 그 날 낸 사람, 월별 줄 = 그 달분 낸 사람, 전체 = 그 기간
+            # 입금한 달 기준: 일별 줄 = 그 날 낸 사람, 월별 줄 = 그 달 낸 사람, 전체 = 그 기간 (선납분 포함)
+            P = PAID_SQL.replace('paid_on', 'f.paid_on').replace('ym ||', 'f.ym ||')
             if mode == 'day':
-                where, args = ("f.ym=?" + (" AND COALESCE(f.paid_on, f.ym || '-01')=?" if key else ''), [month] + ([key] if key else []))
+                where, args = (f'{P}=?', [key]) if key else (f'substr({P},1,7)=?', [month])
             else:
-                where, args = ('f.ym=?', [key]) if key else ('substr(f.ym,1,4)=?', [year])
+                where, args = (f'substr({P},1,7)=?', [key]) if key else (f'substr({P},1,4)=?', [year])
             rows = con.execute(f'''SELECT m.name, m.role, f.ym, f.paid_on, f.amount FROM fee f JOIN member m ON m.id=f.member_id
                                    WHERE f.kind='납부' AND {where} ORDER BY m.sort, f.ym''', args).fetchall()
             per = {}
             for r in rows:
-                p = per.setdefault(r['name'], {'name': r['name'], 'role': r['role'], 'yms': [], 'paid': [], 'amount': 0})
-                p['yms'].append(r['ym']); p['paid'].append(r['paid_on'] or ''); p['amount'] += r['amount'] or 0
+                p = per.setdefault(r['name'], {'name': r['name'], 'role': r['role'], 'yms': [], 'paid': set(), 'amount': 0})
+                p['yms'].append(r['ym']); p['paid'].add(r['paid_on'] or r['ym'] + '-01'); p['amount'] += r['amount'] or 0
             for p in per.values():
                 yms = p['yms']
-                months = f"{int(yms[0][5:])}월분" if len(yms) == 1 else f"{len(yms)}개월분 ({int(yms[0][5:])}~{int(yms[-1][5:])}월)"
-                pd = p['paid'][0]
-                pre = pd and len(yms) == 1 and pd[:7] < yms[0]
-                when = f" · {int(pd[5:7])}/{int(pd[8:10])} 납부{' (선납)' if pre else ''}" if pd and len(yms) == 1 else ''
-                out.append({'name': p['name'], 'tag': p['role'], 'detail': months + when, 'amount': p['amount']})
+                mon = lambda ym: f"{'' if ym[:4] == yms[0][:4] else ym[2:4] + '년 '}{int(ym[5:])}"
+                months = f"{int(yms[0][5:])}월분" if len(yms) == 1 else f"{len(yms)}개월분 ({int(yms[0][5:])}~{mon(yms[-1])}월)"
+                paid = sorted(p['paid'])
+                pre = any(ym > paid[0][:7] for ym in yms)
+                when = f" · {int(paid[0][5:7])}/{int(paid[0][8:10])} 납부" if len(paid) == 1 else f" · {len(paid)}번 납부"
+                out.append({'name': p['name'], 'tag': p['role'], 'detail': months + when + (' (선납)' if pre else ''),
+                            'amount': p['amount'], 'units': len(yms)})
         else:
             if mode == 'day':
                 where, args = ('meet_date=?', [key]) if key else ('substr(meet_date,1,7)=?', [month])
@@ -922,23 +928,25 @@ def admin_stats_people(h, q, d):
                 lv = r['level'] + ('' if r['level'] == '초심' else '급')
                 day = '' if (mode == 'day' and key) else f"{int(r['meet_date'][5:7])}/{int(r['meet_date'][8:10])} · "
                 out.append({'name': r['name'], 'tag': '', 'detail': f"{day}{r['age']} · {r['gender']} · {lv}", 'amount': r['fee']})
-    h.json({'people': out, 'total': sum(p['amount'] or 0 for p in out)})
+    h.json({'people': out, 'total': sum(p['amount'] or 0 for p in out), 'units': sum(p.get('units', 1) for p in out)})
 
 
 def admin_stats(h, q, d):
     mode = q.get('mode', 'day')
     if q.get('kind') == 'club':
-        # 회비는 '회비 달' 기준 (사용자 결정 2026-11-24): 11월 = 11월분 회비. 언제 냈든(선납 포함) 그 달로 셈
-        #  일별: 그 달분 회비를 낸 날짜별로 / 월별: 그 해 달마다 (몇 월분인지)
+        # 회비는 '입금한 달' 기준 (사용자 결정 2026-11-24, 보고서 수입): 선납도 낸 달에 전부 잡음
+        #  count = 낸 사람 수, units = 명분 (회비 1달 = 1명분, 3개월 선납이면 3명분)
+        P = PAID_SQL
         if mode == 'month':
-            key, rng = 'ym', ('substr(ym,1,4)', q.get('year') or today()[:4])
+            key, rng = f'substr({P},1,7)', (f'substr({P},1,4)', q.get('year') or today()[:4])
         else:
-            key, rng = "COALESCE(paid_on, ym || '-01')", ('ym', q.get('month') or today()[:7])
+            key, rng = P, (f'substr({P},1,7)', q.get('month') or today()[:7])
         with db() as con:
-            rows = [{'key': r['k'], 'count': r['n'], 'sum': r['s'] or 0} for r in con.execute(
-                f"SELECT {key} k, COUNT(DISTINCT member_id) n, SUM(amount) s FROM fee WHERE kind='납부' AND {rng[0]}=? GROUP BY k ORDER BY k", (rng[1],))]
+            rows = [{'key': r['k'], 'count': r['n'], 'units': r['u'], 'sum': r['s'] or 0} for r in con.execute(
+                f"SELECT {key} k, COUNT(DISTINCT member_id) n, COUNT(*) u, SUM(amount) s FROM fee WHERE kind='납부' AND {rng[0]}=? GROUP BY k ORDER BY k", (rng[1],))]
             people = con.execute(f"SELECT COUNT(DISTINCT member_id) FROM fee WHERE kind='납부' AND {rng[0]}=?", (rng[1],)).fetchone()[0]
-        return h.json({'mode': mode, 'kind': 'club', 'rows': rows, 'total_count': people, 'total_sum': sum(r['sum'] for r in rows)})
+        return h.json({'mode': mode, 'kind': 'club', 'rows': rows, 'total_count': people,
+                       'total_units': sum(r['units'] for r in rows), 'total_sum': sum(r['sum'] for r in rows)})
     if mode == 'month':
         year = q.get('year') or today()[:4]
         sql = '''SELECT substr(meet_date,1,7) k, COUNT(*) n, SUM(fee) s FROM guest

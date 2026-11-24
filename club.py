@@ -354,8 +354,6 @@ def fee_sheet(year, members, fees):
                 pre = bool(p) and p[:7] < ym
                 txt = (f'{int(p[5:7])}월 {int(p[8:10])}일' + (' (선납)' if pre else '')) if p else '납부'
                 line.append((txt, 6 if pre else 3))
-                total[i] += r.get('amount') or 0
-                if not m['exempt']: paid_n[i] += 1          # 납부 인원은 재무·총무(회비 면제) 제외
             elif r:
                 line.append((r['kind'], 5 if r['kind'] == '탈퇴' else 4))
             elif (left and ym > left) or ym < since:
@@ -371,11 +369,20 @@ def fee_sheet(year, members, fees):
         if nxt: note.append(f"({int(y) + 1}년 {','.join(map(str, nxt))}월 선납)")
         line.append((' '.join(note), 5 if '탈 퇴' in note else 3))
         grid.append(line)
+    # 납부 인원·회비 합계는 '입금한 달' 기준 (보고서 수입): 선납(내년분 포함)도 낸 달에 전부, 인원은 명분(회비 1달 = 1명분)
+    for mid, rows in fees.items():
+        for ym, r in rows.items():
+            if r['kind'] != '납부': continue
+            when = r.get('paid_on') or (ym + '-01')
+            if when[:4] != y: continue
+            i = int(when[5:7]) - 1
+            total[i] += r.get('amount') or 0
+            paid_n[i] += 1
     grid.append([])
-    foot = (('납부 인원 (재무·총무 제외)', paid_n, ''), ('가입자', joined, sum(joined)), ('탈퇴자', quit_n, sum(quit_n)),
-            ('총회원 (병가·출장 포함)', members_n, ''), ('회비 합계', total, sum(total)))
+    foot = (('납부 인원 (입금한 달, 명분 · 재무·총무 제외)', paid_n, sum(paid_n)), ('가입자', joined, sum(joined)), ('탈퇴자', quit_n, sum(quit_n)),
+            ('총회원 (병가·출장 포함)', members_n, ''), ('회비 수입 (입금한 달 기준)', total, sum(total)))
     for label, vals, tail in foot:
-        st = 9 if label == '회비 합계' else 3          # 금액은 천 단위 쉼표
+        st = 9 if label.startswith('회비 수입') else 3          # 금액은 천 단위 쉼표
         grid.append([(label, 2), ('', 2), ('', 2)] + [(v, st) for v in vals] + [(tail, st)])
     n = len(grid)
     merges = ['A1:P1'] + [f'A{r}:C{r}' for r in range(n - len(foot) + 1, n + 1)]

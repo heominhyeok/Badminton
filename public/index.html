@@ -1875,9 +1875,11 @@ async function loadStats(){
     ST.rows = r.rows; ST.page = 1;
     const [y, m] = ST.month.split("-");
     $("sLabel").textContent = ST.mode === "day" ? `${y}년 ${+m}월` : `${ST.year}년`;
-    const what = ST.kind === "club" ? (ST.mode === "day" ? "분 회비" : "분 회비 (달별)") : " 게스트비";
+    const what = ST.kind === "club" ? " 회비 수입" : " 게스트비";
     $("sTitle").textContent = ST.mode === "day" ? `${+m}월${what}` : `${ST.year}년${what}`;
-    $("sCountWrap").innerHTML = `${ST.kind === "club" ? "낸 회원" : "게스트"} <b class="num" id="sCount">${r.total_count}</b>명 ›`;
+    $("sCountWrap").innerHTML = ST.kind === "club"
+      ? `낸 회원 <b class="num" id="sCount">${r.total_count}</b>명 · ${r.total_units}명분 ›`
+      : `게스트 <b class="num" id="sCount">${r.total_count}</b>명 ›`;
     $("sSum").textContent = won(r.total_sum);
     renderStats();
   } catch (e) { adminFail(e); }
@@ -1891,9 +1893,9 @@ function renderStats(){
   $("sPgPrev").disabled = ST.page <= 1; $("sPgNext").disabled = ST.page >= pages;
   $("sList").innerHTML = part.length ? part.map(r => `
     <li class="bar">
-      <span class="k num">${ST.mode === "day" ? shortDate(r.key) + (ST.kind === "club" && r.key.slice(0, 7) < ST.month ? "<small> 선납</small>" : "") : (+r.key.slice(5)) + "월"}</span>
+      <span class="k num">${ST.mode === "day" ? shortDate(r.key) : (+r.key.slice(5)) + "월"}</span>
       <span class="track"><span class="fill" style="width:${Math.round(r.sum / max * 100)}%"></span></span>
-      <span class="v num"><b>${won(r.sum)}</b><button type="button" class="ppl" data-pk="${r.key}">${r.count}명 ›</button></span>
+      <span class="v num"><b>${won(r.sum)}</b><button type="button" class="ppl" data-pk="${r.key}">${r.count}명${ST.kind === "club" && r.units !== r.count ? ` · ${r.units}명분` : ""} ›</button></span>
     </li>`).join("")
     : `<li class="empty"><div><b>${ST.kind === "club" ? "이 기간에 낸 회비가 없어요" : "입금 완료된 게스트가 없어요"}</b>${ST.mode === "day" ? "다른 달을 골라보세요" : "다른 연도를 골라보세요"}</div></li>`;
 }
@@ -1917,12 +1919,12 @@ async function openPeople(key){
   const what = ST.kind === "club" ? "회비" : "게스트비";
   const when = key ? (ST.mode === "day" ? shortDate(key) : `${ST.year}년 ${+key.slice(5)}월`) : (ST.mode === "day" ? `${+ST.month.slice(5)}월 전체` : `${ST.year}년 전체`);
   $("psTitle").textContent = `${when} ${what}`;
-  $("psSub").textContent = ST.kind === "club" ? (ST.mode === "day" ? `${+ST.month.slice(5)}월분 회비 기준` : "회비 달 기준") : "입금완료 게스트";
+  $("psSub").textContent = ST.kind === "club" ? "입금한 날 기준 (선납 포함)" : "입금완료 게스트";
   $("psList").innerHTML = ""; $("pSheet").classList.remove("hidden");
   try {
     const q = new URLSearchParams({ kind: ST.kind, mode: ST.mode, key: key || "", month: ST.month, year: ST.year });
     const r = await api("/api/admin/stats/people?" + q);
-    $("psSub").textContent += ` · ${r.people.length}명 · ${won(r.total)}`;
+    $("psSub").textContent += ` · ${r.people.length}명${ST.kind === "club" && r.units !== r.people.length ? ` (${r.units}명분)` : ""} · ${won(r.total)}`;
     $("psList").innerHTML = r.people.length ? r.people.map((p, i) => `<li class="item">
         <span class="ava">${i + 1}</span>
         <span class="who"><b>${esc(p.name)}</b>${p.tag ? `<i class="role">${esc(p.tag)}</i>` : ""}<span>${esc(p.detail)}</span></span>
