@@ -173,12 +173,19 @@ def parse_club(data, from_year=2026, today_ym=None):
 
 
 # ── 입금 알림 → 회비 자동 판단 ─────────────────────────
-def next_due(rows, today_ym):
+def first_due(since, joined_at=None):
+    """회비를 처음 내야 하는 달. 그 달 15일 이후 가입이면 가입한 달은 회비 대상이 아니라 다음 달부터"""
+    if since and joined_at and joined_at[:7] == since and int(joined_at[8:10]) >= 15:
+        return ym_add(since, 1)
+    return since
+
+
+def next_due(rows, today_ym, since=None):
     """아직 안 낸 가장 이른 달. rows = {ym: kind}
-    마지막으로 낸 달 다음 달부터 (지난 병가·출장 달은 건너뜀). 낸 적 없으면 이번 달"""
+    마지막으로 낸 달 다음 달부터 (지난 병가·출장 달은 건너뜀). 낸 적 없으면 이번 달 (회원 시작 달이 더 늦으면 그 달)"""
     paid = [ym for ym, k in rows.items() if k == '납부']
     if not paid:
-        ym = today_ym
+        ym = max(today_ym, since or today_ym)
     else:
         ym = ym_add(max(paid), 1)
         while ym < today_ym and rows.get(ym) in ('병가', '출장'):
@@ -219,7 +226,7 @@ def plan_fee(sender, amount, fee, members, rows_by_member, today_ym):
     plan = []
     for m in found:
         rows = rows_by_member.get(m['id'], {})
-        start = want or next_due(rows, today_ym)
+        start = want or next_due(rows, today_ym, m.get('since'))
         yms = ym_range(start, per)
         if any(rows.get(ym) == '납부' for ym in yms):   # 이미 낸 달과 겹치면 미정
             return None

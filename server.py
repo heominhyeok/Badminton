@@ -120,6 +120,8 @@ def init_db():
             con.execute('ALTER TABLE ledger ADD COLUMN in_bal INTEGER NOT NULL DEFAULT 1')   # 직접 적은 줄: 1 = 잔액에 반영, 0 = 이미 은행 알림으로 잡힌 돈
         if 'dep_id' not in [r[1] for r in con.execute('PRAGMA table_info(ledger)')]:
             con.execute('ALTER TABLE ledger ADD COLUMN dep_id INTEGER')   # 이자·캐시백 입금 알림에서 온 수입이면 그 입금
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fee'").fetchone():
+            sync_since(con)
         if not con.execute("SELECT 1 FROM setting WHERE key='interest_moved'").fetchone():
             for r in con.execute('SELECT id, received_at, sender, amount, raw FROM deposit WHERE amount IS NOT NULL').fetchall():
                 t = bank_income_title(r['sender'])
@@ -1270,6 +1272,25 @@ def fill_status_months(con):
             ym = club.ym_add(ym, 1)
 
 
+def sync_since(con, ids=None):
+    """회원 시작 달(since)을 회비 기록에 맞춤 — 시작 달 전에는 '미납'이 안 뜸
+    - 시작 달보다 먼저 낸 달이 있으면 그 달부터 회원
+    - 그 달 15일 이후 가입했는데 가입한 달은 안 내고 다음 달 이후부터 냈으면(선납 등) 처음 낸 달부터 회원"""
+    q = 'SELECT id, since, created_at FROM member' + (f" WHERE id IN ({','.join('?' * len(ids))})" if ids else '')
+    for m in con.execute(q, tuple(ids or ())).fetchall():
+        if not m['since']: continue
+        yms = [r[0] for r in con.execute("SELECT ym FROM fee WHERE member_id=? AND kind='납부' ORDER BY ym", (m['id'],))]
+        if not yms: continue
+        new = m['since']
+        if yms[0] < new:
+            new = yms[0]
+        elif yms[0] > new and club.first_due(new, m['created_at']) != new and not con.execute(
+                'SELECT 1 FROM fee WHERE member_id=? AND ym=?', (m['id'], new)).fetchone():
+            new = yms[0]
+        if new != m['since']:
+            con.execute('UPDATE member SET since=? WHERE id=?', (new, m['id']))
+
+
 def member_rows(con):
     out = {}
     for r in con.execute('SELECT member_id, ym, kind FROM fee'):
@@ -1282,7 +1303,7 @@ def auto_fee(con, dep_id, sender, amount):
     fee = club_fee()
     if not amount or amount < fee:
         return None
-    mems = [dict(r) for r in con.execute("SELECT id, name, status FROM member WHERE status<>'탈퇴'")]
+    mems = [dict(r) for r in con.execute("SELECT id, name, status, since FROM member WHERE status<>'탈퇴'")]
     plan = club.plan_fee(sender, amount, fee, mems, member_rows(con), this_ym())
     if not plan:
         return None
@@ -1292,6 +1313,7 @@ def auto_fee(con, dep_id, sender, amount):
                         (mid, ym, '납부', today(), fee, dep_id))
     note = club.plan_text(plan, {m['id']: m['name'] for m in mems}, this_ym())
     con.execute('UPDATE deposit SET fee_note=? WHERE id=?', (note, dep_id))
+    sync_since(con, [mid for mid, _ in plan])
     return note
 
 
@@ -1322,7 +1344,7 @@ def admin_member_save(h, q, d):
         else:
             srt = con.execute('SELECT COALESCE(MAX(sort),0)+1 FROM member').fetchone()[0]
             mid = con.execute('INSERT INTO member(name, role, status, exempt, sort, since, created_at) VALUES (?,?,?,?,?,?,?)',
-                              (name, role, status, exempt, srt, ym, now())).lastrowid
+                              (name, role, status, exempt, srt, club.first_due(ym, today()), now())).lastrowid
         # 이번 달 기록: 병가·출장·탈퇴면 그 상태로 (낸 기록이 있으면 그대로), 활동으로 돌아오면 이번 달 상태 기록을 지움
         cur = con.execute('SELECT kind FROM fee WHERE member_id=? AND ym=?', (mid, ym)).fetchone()
         if status != '활동' and (not cur or cur['kind'] != '납부'):
@@ -1376,6 +1398,7 @@ def admin_fee_set(h, q, d):
             con.execute('INSERT OR REPLACE INTO fee(member_id, ym, kind) VALUES (?,?,?)', (mid, ym, kind))
         else:
             raise ApiError('상태가 잘못됐어요')
+        sync_since(con, [mid])
     h.json({'ok': True})
 
 
@@ -1408,6 +1431,7 @@ def admin_fee_pay(h, q, d):
                             (mid, ym, '납부', paid_on, fee, dep_id))
         note = club.plan_text(plan, names, this_ym())
         if dep_id: con.execute('UPDATE deposit SET fee_note=? WHERE id=?', (note, dep_id))
+        sync_since(con, list(names))
     h.json({'ok': True, 'note': note})
 
 
@@ -1470,8 +1494,8 @@ def report_data(ym):
         lines.append({'kind': 'back', 'title': '이전 달 회비 (미납분)', 'count': len(back), 'unit': fee,
                       'amount': sum(r['amount'] or 0 for r in back)})
     if pre:
-        lines.append({'kind': 'pre', 'title': ('신입회원 선납금' if all(p['new'] for p in pre) else '선납금'),
-                      'detail': ', '.join(f"{p['name']}{'(신입)' if p['new'] and not all(x['new'] for x in pre) else ''} {p['months']}개월" for p in pre),
+        lines.append({'kind': 'pre', 'title': '회비 선납',
+                      'detail': ', '.join(f"{p['name']} {p['months']}개월" for p in pre),
                       'count': sum(p['months'] for p in pre), 'unit': fee, 'amount': sum(p['amount'] for p in pre)})
     lines.append({'kind': 'guest', 'title': f"게스트비 ({g['n']}명)", 'count': g['n'], 'amount': g['s']})
     # 통장관리 장부: 수입(수기)은 수입 칸에 한 줄씩, 지출(수기 + 출금 알림)은 지출 칸에

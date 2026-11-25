@@ -1580,7 +1580,7 @@ function statusSince(m){ const rows = C.fmap[m.id] || {}; let ym = C.ym; while (
 // 아직 안 낸 가장 이른 달 (마지막으로 낸 달 다음 달, 지난 병가·출장 달은 건너뜀)
 function nextDue(m){
   const rows = C.fmap[m.id] || {}, lp = lastPaid(m);
-  if (!lp) return C.ym;
+  if (!lp) return m.since && m.since > C.ym ? m.since : C.ym;
   let ym = ymAdd(lp, 1);
   while (ym < C.ym && ["병가", "출장"].includes(rows[ym]?.kind)) ym = ymAdd(ym, 1);
   return ym;
@@ -1618,19 +1618,18 @@ function renderClub(){
   $("cFeeTag").textContent = `1인 ${won(C.fee)}`;
   $("cNow").innerHTML = `현재 회원 <b class="num">${cur.length}</b>명 <small>(활동 ${cnt("활동")} · 병가 ${cnt("병가")} · 출장 ${cnt("출장")}) · 탈퇴 ${cnt("탈퇴")}명</small>`;
   $("cPaid").innerHTML = `납부 <b class="num">${paid.length}</b> / ${target.length}명`;
-  // 이번 달에 받은 선납금 (다음 달 이후분) — 총 금액에 더하고 그 중 신입 선납·선납 얼마인지 따로 표시
-  const pre = { 신입: { amt: 0, who: [] }, 기존: { amt: 0, who: [] } };
+  // 이번 달에 받은 선납금 (다음 달 이후분) — 총 금액에 더하고 그 중 '회비 선납' 얼마인지 (신입·기존 구분 없이 같이)
+  const pre = { amt: 0, who: [] };
   for (const m of ms) {
     const rows = Object.entries(C.fmap[m.id] || {}).filter(([ym, r]) => r.kind === "납부" && ym > now && (r.paid_on || ym).slice(0, 7) === now);
     if (!rows.length) continue;
-    const g = pre[m.since === now ? "신입" : "기존"];
-    g.amt += rows.reduce((t, [, r]) => t + (r.amount || C.fee), 0); g.who.push(`${m.name} ${rows.length}개월`);
+    pre.amt += rows.reduce((t, [, r]) => t + (r.amount || C.fee), 0); pre.who.push(`${m.name} ${rows.length}개월`);
   }
-  const preSum = pre.신입.amt + pre.기존.amt;
+  const preSum = pre.amt;
   $("cSum").textContent = won(sum + preSum);
   $("cPre").classList.toggle("hidden", !preSum);
   $("cPre").innerHTML = preSum ? `그 중 ${+now.slice(5)}월분 ${won(sum)} · `
-    + [["신입 선납", pre.신입], ["선납", pre.기존]].filter(([, g]) => g.amt).map(([t, g]) => `${t} <b class="num">${won(g.amt)}</b> <small>(${esc(g.who.join(", "))})</small>`).join(" · ") : "";
+    + `회비 선납 <b class="num">${won(pre.amt)}</b> <small>(${esc(pre.who.join(", "))})</small>` : "";
   $("cCounts").textContent = `납부 기준 ${target.length}명 = 현재 회원 ${cur.length}`
     + (exempt.length ? ` − 면제 ${exempt.length}` : "") + (away.length ? ` − 병가·출장 ${away.length}` : "")
     + (later.length ? ` − 다음 달부터 ${later.length}` : "");
@@ -1706,7 +1705,7 @@ const MS = { id: null, role: "", status: "활동", exempt: false };
 function openMember(m){
   Object.assign(MS, { id: m ? m.id : null, role: m ? m.role : "", status: m ? m.status : "활동", exempt: !!m?.exempt });
   $("msTitle").textContent = m ? "회원 정보" : "회원 추가";
-  $("msSub").textContent = m ? (m.since ? `${ymLab(m.since, true)}부터 회원` : "") : "추가하면 이번 달부터 회비 현황에 나와요";
+  $("msSub").textContent = m ? (m.since ? `${ymLab(m.since, true)}부터 회원` : "") : (new Date().getDate() >= 15 ? "15일 이후 가입이라 다음 달부터 회비 대상이에요" : "추가하면 이번 달부터 회비 현황에 나와요");
   $("msName").value = m ? m.name : "";
   $("msRoleNew").value = ""; $("msRoleAdd").classList.add("hidden");
   $("msDel").classList.toggle("hidden", !m);
