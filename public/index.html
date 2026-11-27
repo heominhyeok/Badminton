@@ -104,7 +104,7 @@
   .chips label{flex:1;min-width:0;white-space:nowrap;text-align:center;padding:11px 0;border-radius:12px;background:var(--field);font-size:14px;font-weight:600;cursor:pointer}
   .chips input:checked + label{background:var(--ink);color:var(--bg)}
   .chips input:focus-visible + label{outline:2px solid var(--ink);outline-offset:2px}
-  .chips.gtypes label:first-of-type{flex:2.3}   /* '상도초회원게스트'가 길어서 넓게 */
+  .chips label[for=gtM]{flex:2.3}   /* 신청 화면 '상도초회원게스트'가 길어서 넓게 */
 
   /* 송금 */
   .payname{text-align:center;padding:clamp(2px,1.2vh,14px) 0 0}
@@ -506,7 +506,7 @@
       </div>
       <p class="sec-label">게스트 유형</p>
       <div class="chips gtypes" role="radiogroup" aria-label="게스트 유형">
-        <input type="radio" name="gtype" id="gtM" value="상도초회원게스트"><label for="gtM">상도초회원게스트</label>
+        <input type="radio" name="gtype" id="gtM" value="회원"><label for="gtM">상도초회원게스트</label>
         <input type="radio" name="gtype" id="gtS" value="소모임"><label for="gtS">소모임</label>
         <input type="radio" name="gtype" id="gtD" value="당근"><label for="gtD">당근</label>
         <input type="radio" name="gtype" id="gtE" value="기타"><label for="gtE">기타</label>
@@ -898,7 +898,7 @@
         <input type="radio" name="mLevel" id="mlN" value="초심"><label for="mlN">초심</label>
       </div>
       <div class="chips gtypes" role="radiogroup" aria-label="게스트 유형">
-        <input type="radio" name="mGtype" id="mgtM" value="상도초회원게스트"><label for="mgtM">상도초회원게스트</label>
+        <input type="radio" name="mGtype" id="mgtM" value="회원"><label for="mgtM">회원</label>
         <input type="radio" name="mGtype" id="mgtS" value="소모임"><label for="mgtS">소모임</label>
         <input type="radio" name="mGtype" id="mgtD" value="당근"><label for="mgtD">당근</label>
         <input type="radio" name="mGtype" id="mgtE" value="기타"><label for="mgtE">기타</label>
@@ -1201,8 +1201,9 @@ async function loadPublic(){
 }
 
 // 게스트 유형 (회원·소모임·당근·기타) → 색 표시
-const GT_LIST = ["상도초회원게스트", "소모임", "당근", "기타"];
-const GTC = t => "gt-" + (({ 상도초회원게스트: "m", 소모임: "s", 당근: "d" })[t] || "e");
+const GT_LIST = ["회원", "소모임", "당근", "기타"];
+const GT_GUEST = t => t === "회원" ? "상도초회원게스트" : t;   // 게스트 화면에서만 쓰는 이름
+const GTC = t => "gt-" + (({ 회원: "m", 소모임: "s", 당근: "d" })[t] || "e");
 const picked = n => document.querySelector(`input[name="${n}"]:checked`)?.value;
 async function apply(){
   const body = { name: $("name").value.trim(), age: $("age").value, gender: picked("gender"), level: picked("level"), gtype: picked("gtype") };
@@ -1254,7 +1255,7 @@ function finish(){
   $("meName").textContent = me.name;
   $("meAgeGender").textContent = `${me.age} · ${me.gender}`;
   $("meLevel").textContent = me.level;
-  $("meGtype").textContent = me.gtype || "";
+  $("meGtype").textContent = GT_GUEST(me.gtype || "");
   $("meGtypeRow").classList.toggle("hidden", !me.gtype);
   setDone(true);
   show("stepApply");
@@ -1335,7 +1336,7 @@ $("guestListBtn").addEventListener("click", async () => {
     const r = await api("/api/public/guests");
     $("gSheetSub").textContent = `${fmtDate(r.date)} · 입금 완료 ${r.guests.length}명`;
     const sexCls = g => g === "남" ? "m" : "f";
-    const row = g => `<li><span class="sx ${sexCls(g.gender)}">${esc(g.gender)}</span><b>${esc(g.name)}${g.gtype ? `<em class="gt ${GTC(g.gtype)}">${esc(g.gtype)}</em>` : ""}</b><span>${esc(g.age)}</span><span class="lv">${esc(g.level)}${g.level === "초심" ? "" : "급"}</span></li>`;
+    const row = g => `<li><span class="sx ${sexCls(g.gender)}">${esc(g.gender)}</span><b>${esc(g.name)}${g.gtype ? `<em class="gt ${GTC(g.gtype)}">${esc(GT_GUEST(g.gtype))}</em>` : ""}</b><span>${esc(g.age)}</span><span class="lv">${esc(g.level)}${g.level === "초심" ? "" : "급"}</span></li>`;
     const group = (sex, cls) => {
       const list = r.guests.filter(g => g.gender === sex);
       return list.length ? `<li class="ghead"><span class="sx ${cls}">${sex} ${list.length}명</span></li>` + list.map(row).join("") : "";
