@@ -121,7 +121,8 @@ def init_db():
         if 'dep_id' not in [r[1] for r in con.execute('PRAGMA table_info(ledger)')]:
             con.execute('ALTER TABLE ledger ADD COLUMN dep_id INTEGER')   # 이자·캐시백 입금 알림에서 온 수입이면 그 입금
         if 'gtype' not in [r[1] for r in con.execute('PRAGMA table_info(guest)')]:
-            con.execute("ALTER TABLE guest ADD COLUMN gtype TEXT NOT NULL DEFAULT ''")   # 게스트 유형: 회원 | 소모임 | 당근 | 기타
+            con.execute("ALTER TABLE guest ADD COLUMN gtype TEXT NOT NULL DEFAULT ''")   # 게스트 유형: 상도초회원게스트 | 소모임 | 당근 | 기타
+        con.execute("UPDATE guest SET gtype='상도초회원게스트' WHERE gtype='회원'")   # 유형 이름 바꿈 (회원 → 상도초회원게스트)
         if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fee'").fetchone():
             sync_since(con)
         if not con.execute("SELECT 1 FROM setting WHERE key='interest_moved'").fetchone():
@@ -464,7 +465,7 @@ def apply(h, q, d):
     if gender not in ('남', '여'): raise ApiError('성별을 골라주세요')
     if level not in ('A', 'B', 'C', 'D', '초심'): raise ApiError('급수를 골라주세요')
     gtype = clean(d.get('gtype'))
-    if gtype not in ('회원', '소모임', '당근', '기타'): raise ApiError('게스트 유형을 골라주세요')
+    if gtype not in ('상도초회원게스트', '소모임', '당근', '기타'): raise ApiError('게스트 유형을 골라주세요')
     s = settings()
     if s['closed']: raise ApiError('오늘은 운동이 없어요. 운동하는 날에 신청해주세요')
     if not s['account_no']: raise ApiError('아직 입금 계좌가 설정되지 않았어요. 총무에게 알려주세요')
@@ -1060,7 +1061,7 @@ def admin_add(h, q, d):
     if gender not in ('남', '여'): raise ApiError('성별을 골라주세요')
     if level not in ('A', 'B', 'C', 'D', '초심'): raise ApiError('급수를 골라주세요')
     gtype = clean(d.get('gtype'))
-    if gtype not in ('회원', '소모임', '당근', '기타'): raise ApiError('게스트 유형을 골라주세요')
+    if gtype not in ('상도초회원게스트', '소모임', '당근', '기타'): raise ApiError('게스트 유형을 골라주세요')
     try: fee = int(str(d.get('fee', '')).replace(',', ''))
     except ValueError: raise ApiError('금액을 숫자로 입력해주세요')
     if not 0 <= fee <= 1000000: raise ApiError('금액이 너무 커요')
