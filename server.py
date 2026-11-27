@@ -120,6 +120,8 @@ def init_db():
             con.execute('ALTER TABLE ledger ADD COLUMN in_bal INTEGER NOT NULL DEFAULT 1')   # 직접 적은 줄: 1 = 잔액에 반영, 0 = 이미 은행 알림으로 잡힌 돈
         if 'dep_id' not in [r[1] for r in con.execute('PRAGMA table_info(ledger)')]:
             con.execute('ALTER TABLE ledger ADD COLUMN dep_id INTEGER')   # 이자·캐시백 입금 알림에서 온 수입이면 그 입금
+        if 'gtype' not in [r[1] for r in con.execute('PRAGMA table_info(guest)')]:
+            con.execute("ALTER TABLE guest ADD COLUMN gtype TEXT NOT NULL DEFAULT ''")   # 게스트 유형: 회원 | 소모임 | 당근 | 기타
         if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fee'").fetchone():
             sync_since(con)
         if not con.execute("SELECT 1 FROM setting WHERE key='interest_moved'").fetchone():
@@ -445,13 +447,13 @@ def mask_name(n):
 
 
 def public_guests(h, q, d):
-    """오늘 입금 완료된 게스트 목록 (이름은 성만, 성별·나이대·급수만 공개)"""
+    """오늘 입금 완료된 게스트 목록 (이름은 성만, 성별·나이대·급수·유형만 공개)"""
     s = settings()
     with db() as con:
-        rows = con.execute("""SELECT name, gender, age, level FROM guest
+        rows = con.execute("""SELECT name, gender, age, level, gtype FROM guest
                               WHERE meet_date=? AND status='신청완료' ORDER BY paid_at, id""", (s['meet_date'],)).fetchall()
     h.json({'date': s['meet_date'], 'guests': [
-        {'name': mask_name(r['name']), 'gender': r['gender'], 'age': r['age'], 'level': r['level']} for r in rows]})
+        {'name': mask_name(r['name']), 'gender': r['gender'], 'age': r['age'], 'level': r['level'], 'gtype': r['gtype']} for r in rows]})
 
 
 def apply(h, q, d):
@@ -461,6 +463,8 @@ def apply(h, q, d):
     if age not in ('10대', '20대', '30대', '40대', '50대', '60대'): raise ApiError('나이대를 골라주세요')
     if gender not in ('남', '여'): raise ApiError('성별을 골라주세요')
     if level not in ('A', 'B', 'C', 'D', '초심'): raise ApiError('급수를 골라주세요')
+    gtype = clean(d.get('gtype'))
+    if gtype not in ('회원', '소모임', '당근', '기타'): raise ApiError('게스트 유형을 골라주세요')
     s = settings()
     if s['closed']: raise ApiError('오늘은 운동이 없어요. 운동하는 날에 신청해주세요')
     if not s['account_no']: raise ApiError('아직 입금 계좌가 설정되지 않았어요. 총무에게 알려주세요')
@@ -478,9 +482,9 @@ def apply(h, q, d):
         while con.execute('SELECT 1 FROM guest WHERE meet_date=? AND pay_name=?', (s['meet_date'], pay_name)).fetchone():
             n += 1
             pay_name = f'{name}{n}'
-        cur = con.execute('''INSERT INTO guest(meet_date,name,phone4,age,gender,level,pay_name,fee,token,created_at)
-                             VALUES (?,?,'',?,?,?,?,?,?,?)''',
-                          (s['meet_date'], name, age, gender, level, pay_name, int(s['fee']), token, now()))
+        cur = con.execute('''INSERT INTO guest(meet_date,name,phone4,age,gender,level,gtype,pay_name,fee,token,created_at)
+                             VALUES (?,?,'',?,?,?,?,?,?,?,?)''',
+                          (s['meet_date'], name, age, gender, level, gtype, pay_name, int(s['fee']), token, now()))
     h.json({'id': cur.lastrowid, 'token': token, 'pay_name': pay_name, 'meet_date': s['meet_date']})
 
 
@@ -764,7 +768,7 @@ def admin_deposits(h, q, d):
         matched = con.execute('SELECT COUNT(*) FROM deposit WHERE substr(received_at,1,10)=? AND (guest_id IS NOT NULL OR fee_note IS NOT NULL)', (date,)).fetchone()[0]
         pages = max(1, -(-total // size)); page = min(page, pages)
         rows = [dict(r) for r in con.execute(
-            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, d.linked, g.name guest_name, g.status guest_status, g.token LIKE 'manual-%' guest_manual
+            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, d.linked, g.name guest_name, g.gtype guest_gtype, g.status guest_status, g.token LIKE 'manual-%' guest_manual
                FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id WHERE substr(d.received_at,1,10)=?
                ORDER BY d.id DESC LIMIT ? OFFSET ?''',
             (date, size, (page - 1) * size))]
@@ -777,7 +781,7 @@ def admin_link_guests(h, q, d):
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date): raise ApiError('날짜 형식이 맞지 않아요')
     with db() as con:
         rows = [dict(r) for r in con.execute(
-            '''SELECT g.id, g.name, g.age, g.gender, g.level, g.pay_name, g.status, g.fee,
+            '''SELECT g.id, g.name, g.age, g.gender, g.level, g.gtype, g.pay_name, g.status, g.fee,
                       EXISTS(SELECT 1 FROM deposit d WHERE d.guest_id=g.id) linked
                FROM guest g WHERE g.meet_date=? ORDER BY g.id''', (date,))]
     h.json({'date': date, 'guests': rows})
@@ -810,7 +814,7 @@ def admin_deposit_search(h, q, d):
     like = '%' + word.replace('\\', '').replace('%', '').replace('_', '') + '%'
     with db() as con:
         rows = [dict(r) for r in con.execute(
-            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, d.linked, g.name guest_name, g.status guest_status,
+            '''SELECT d.id, d.received_at, d.sender, d.amount, d.guest_id, d.fee_note, d.linked, g.name guest_name, g.gtype guest_gtype, g.status guest_status,
                       g.token LIKE 'manual-%' guest_manual
                FROM deposit d LEFT JOIN guest g ON g.id=d.guest_id
                WHERE REPLACE(d.sender,' ','') LIKE ? OR REPLACE(COALESCE(d.fee_note,''),' ','') LIKE ? OR REPLACE(COALESCE(g.name,''),' ','') LIKE ?
@@ -885,9 +889,9 @@ def push_all(title, body):
 def notify_paid(gid):
     """입금 완료된 게스트 알림: 이름 · 나이대 · 성별 · 급수"""
     with db() as con:
-        g = con.execute('SELECT name, age, gender, level FROM guest WHERE id=?', (gid,)).fetchone()
+        g = con.execute('SELECT name, age, gender, level, gtype FROM guest WHERE id=?', (gid,)).fetchone()
     if g:
-        push_all('🏸 게스트 신청 완료', f"{g['name']} · {g['age']} · {g['gender']} · {g['level']}")
+        push_all('🏸 게스트 신청 완료', f"{g['name']} · {g['age']} · {g['gender']} · {g['level']}" + (f" · {g['gtype']}" if g['gtype'] else ''))
 
 
 def push_key(h, q, d):
@@ -1039,7 +1043,7 @@ def admin_guests(h, q, d):
         pages = max(1, -(-total // size)); page = min(page, pages)
         # 입금대기를 먼저, 그다음 신청 순서
         rows = [dict(r) for r in con.execute(
-            f'''SELECT id,name,phone4,age,gender,level,pay_name,fee,status,created_at,paid_at,token LIKE 'manual-%' manual FROM guest WHERE {where}
+            f'''SELECT id,name,phone4,age,gender,level,gtype,pay_name,fee,status,created_at,paid_at,token LIKE 'manual-%' manual FROM guest WHERE {where}
                 ORDER BY CASE status WHEN '입금대기' THEN 0 ELSE 1 END, id LIMIT ? OFFSET ?''', args + [size, (page - 1) * size])]
         paid_sum = con.execute("SELECT COALESCE(SUM(fee),0) FROM guest WHERE meet_date=? AND status='신청완료'", (date,)).fetchone()[0]
     h.json({'date': date, 'guests': rows, 'counts': counts(date), 'paid_sum': paid_sum, 'page': page, 'pages': pages, 'total': total})
@@ -1055,6 +1059,8 @@ def admin_add(h, q, d):
     if age not in ('10대', '20대', '30대', '40대', '50대', '60대'): raise ApiError('나이대를 골라주세요')
     if gender not in ('남', '여'): raise ApiError('성별을 골라주세요')
     if level not in ('A', 'B', 'C', 'D', '초심'): raise ApiError('급수를 골라주세요')
+    gtype = clean(d.get('gtype'))
+    if gtype not in ('회원', '소모임', '당근', '기타'): raise ApiError('게스트 유형을 골라주세요')
     try: fee = int(str(d.get('fee', '')).replace(',', ''))
     except ValueError: raise ApiError('금액을 숫자로 입력해주세요')
     if not 0 <= fee <= 1000000: raise ApiError('금액이 너무 커요')
@@ -1071,9 +1077,9 @@ def admin_add(h, q, d):
         pay_name, n = name, 1
         while con.execute('SELECT 1 FROM guest WHERE meet_date=? AND pay_name=?', (date, pay_name)).fetchone():
             n += 1; pay_name = f'{name}{n}'
-        cur = con.execute("INSERT INTO guest(meet_date,name,phone4,age,gender,level,pay_name,fee,status,token,created_at,paid_at)"
-                          " VALUES (?,?,'',?,?,?,?,?,'신청완료',?,?,?)",
-                          (date, name, age, gender, level, pay_name, fee, 'manual-' + secrets.token_urlsafe(9), now(),
+        cur = con.execute("INSERT INTO guest(meet_date,name,phone4,age,gender,level,gtype,pay_name,fee,status,token,created_at,paid_at)"
+                          " VALUES (?,?,'',?,?,?,?,?,?,'신청완료',?,?,?)",
+                          (date, name, age, gender, level, gtype, pay_name, fee, 'manual-' + secrets.token_urlsafe(9), now(),
                            dep['received_at'] if dep else now()))
         if dep: con.execute('UPDATE deposit SET guest_id=? WHERE id=?', (cur.lastrowid, dep['id']))
     h.json({'ok': True, 'id': cur.lastrowid})
@@ -1135,11 +1141,11 @@ def admin_stats_people(h, q, d):
                 where, args = ('meet_date=?', [key]) if key else ('substr(meet_date,1,7)=?', [month])
             else:
                 where, args = ('substr(meet_date,1,7)=?', [key]) if key else ('substr(meet_date,1,4)=?', [year])
-            for r in con.execute(f'''SELECT name, age, gender, level, fee, meet_date FROM guest
+            for r in con.execute(f'''SELECT name, age, gender, level, gtype, fee, meet_date FROM guest
                                      WHERE status='신청완료' AND {where} ORDER BY meet_date, paid_at, id''', args):
                 lv = r['level'] + ('' if r['level'] == '초심' else '급')
                 day = '' if (mode == 'day' and key) else f"{int(r['meet_date'][5:7])}/{int(r['meet_date'][8:10])} · "
-                out.append({'name': r['name'], 'tag': '', 'detail': f"{day}{r['age']} · {r['gender']} · {lv}", 'amount': r['fee']})
+                out.append({'name': r['name'], 'tag': r['gtype'], 'detail': f"{day}{r['age']} · {r['gender']} · {lv}", 'amount': r['fee']})
     h.json({'people': out, 'total': sum(p['amount'] or 0 for p in out), 'units': sum(p.get('units', 1) for p in out)})
 
 

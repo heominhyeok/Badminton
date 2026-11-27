@@ -378,6 +378,9 @@
   .item .who{flex:1;min-width:0}
   .item .who b{font-size:15px;font-weight:700}
   .item .who em{font-style:normal;font-size:12px;color:var(--sub);margin-left:6px}
+  em.gt{font-style:normal;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:1px;letter-spacing:0}
+  .item .who em.gt{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;vertical-align:1px}
+  .gt-m{color:#1D4E9E;background:#E6EEFB} .gt-s{color:#6B3FA0;background:#EFE6FB} .gt-d{color:#B24A00;background:#FFE8D6} .gt-e{color:var(--sub);background:var(--field)}
   .item .who span{display:block;font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .act{display:flex;gap:6px;align-items:center;flex:none}
   .btn-sm{border:0;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700}
@@ -500,6 +503,13 @@
         <input type="radio" name="level" id="lvD" value="D"><label for="lvD">D</label>
         <input type="radio" name="level" id="lvN" value="초심"><label for="lvN">초심</label>
       </div>
+      <p class="sec-label">게스트 유형</p>
+      <div class="chips gtypes" role="radiogroup" aria-label="게스트 유형">
+        <input type="radio" name="gtype" id="gtM" value="회원"><label for="gtM">회원</label>
+        <input type="radio" name="gtype" id="gtS" value="소모임"><label for="gtS">소모임</label>
+        <input type="radio" name="gtype" id="gtD" value="당근"><label for="gtD">당근</label>
+        <input type="radio" name="gtype" id="gtE" value="기타"><label for="gtE">기타</label>
+      </div>
     </form>
     <div class="cta-wrap" id="applyCta"><button class="cta" id="applyBtn" type="button">신청하고 계좌 받기</button></div>
 
@@ -523,6 +533,7 @@
         <li><span>이름</span><b id="meName"></b></li>
         <li><span>나이 · 성별</span><b id="meAgeGender"></b></li>
         <li><span>급수</span><b id="meLevel"></b></li>
+        <li id="meGtypeRow"><span>게스트 유형</span><b id="meGtype"></b></li>
         <li><span>게스트비</span><b class="num fee"></b></li>
       </ul>
     </div>
@@ -885,6 +896,12 @@
         <input type="radio" name="mLevel" id="mlD" value="D"><label for="mlD">D</label>
         <input type="radio" name="mLevel" id="mlN" value="초심"><label for="mlN">초심</label>
       </div>
+      <div class="chips gtypes" role="radiogroup" aria-label="게스트 유형">
+        <input type="radio" name="mGtype" id="mgtM" value="회원"><label for="mgtM">회원</label>
+        <input type="radio" name="mGtype" id="mgtS" value="소모임"><label for="mgtS">소모임</label>
+        <input type="radio" name="mGtype" id="mgtD" value="당근"><label for="mgtD">당근</label>
+        <input type="radio" name="mGtype" id="mgtE" value="기타"><label for="mgtE">기타</label>
+      </div>
       <label class="mfee"><span>금액</span><input id="mFee" inputmode="numeric" aria-label="금액"><span>원</span></label>
     </form>
     <div style="height:12px"></div>
@@ -1146,7 +1163,7 @@ document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", 
 
 /* ───────── 게스트 ───────── */
 let S = {};          // 설정
-let me = null;       // { id, token, pay_name, name, age, gender, level }
+let me = null;       // { id, token, pay_name, name, age, gender, level, gtype }
 let pollTimer = null;
 const ME_KEY = "gp_me";
 
@@ -1182,13 +1199,17 @@ async function loadPublic(){
   catch (e) { toast(e.message); }
 }
 
+// 게스트 유형 (회원·소모임·당근·기타) → 색 표시
+const GT_LIST = ["회원", "소모임", "당근", "기타"];
+const GTC = t => "gt-" + (({ 회원: "m", 소모임: "s", 당근: "d" })[t] || "e");
 const picked = n => document.querySelector(`input[name="${n}"]:checked`)?.value;
 async function apply(){
-  const body = { name: $("name").value.trim(), age: $("age").value, gender: picked("gender"), level: picked("level") };
+  const body = { name: $("name").value.trim(), age: $("age").value, gender: picked("gender"), level: picked("level"), gtype: picked("gtype") };
   if (!body.name) return toast("이름을 입력해주세요"), $("name").focus();
   if (!body.age) return toast("나이대를 골라주세요");
   if (!body.gender) return toast("성별을 골라주세요");
   if (!body.level) return toast("급수를 골라주세요");
+  if (!body.gtype) return toast("게스트 유형을 골라주세요");
   $("applyBtn").disabled = true;
   try {
     const r = await api("/api/apply", body);
@@ -1232,6 +1253,8 @@ function finish(){
   $("meName").textContent = me.name;
   $("meAgeGender").textContent = `${me.age} · ${me.gender}`;
   $("meLevel").textContent = me.level;
+  $("meGtype").textContent = me.gtype || "";
+  $("meGtypeRow").classList.toggle("hidden", !me.gtype);
   setDone(true);
   show("stepApply");
   loadPublic();     // 오늘 게스트 수 새로
@@ -1311,7 +1334,7 @@ $("guestListBtn").addEventListener("click", async () => {
     const r = await api("/api/public/guests");
     $("gSheetSub").textContent = `${fmtDate(r.date)} · 입금 완료 ${r.guests.length}명`;
     const sexCls = g => g === "남" ? "m" : "f";
-    const row = g => `<li><span class="sx ${sexCls(g.gender)}">${esc(g.gender)}</span><b>${esc(g.name)}</b><span>${esc(g.age)}</span><span class="lv">${esc(g.level)}${g.level === "초심" ? "" : "급"}</span></li>`;
+    const row = g => `<li><span class="sx ${sexCls(g.gender)}">${esc(g.gender)}</span><b>${esc(g.name)}${g.gtype ? `<em class="gt ${GTC(g.gtype)}">${esc(g.gtype)}</em>` : ""}</b><span>${esc(g.age)}</span><span class="lv">${esc(g.level)}${g.level === "초심" ? "" : "급"}</span></li>`;
     const group = (sex, cls) => {
       const list = r.guests.filter(g => g.gender === sex);
       return list.length ? `<li class="ghead"><span class="sx ${cls}">${sex} ${list.length}명</span></li>` + list.map(row).join("") : "";
@@ -1485,7 +1508,7 @@ async function loadGuests(){
     ul.innerHTML = r.guests.map(g => `
       <li class="item">
         <span class="ava ${g.gender === "남" ? "m" : "f"}">${esc(g.name.slice(0,1))}</span>
-        <span class="who"><b>${esc(g.name)}</b>${g.pay_name !== g.name ? `<em>입금자명 ${esc(g.pay_name)}</em>` : ""}${g.manual ? `<em>수기</em>` : ""}
+        <span class="who"><b>${esc(g.name)}</b>${g.pay_name !== g.name ? `<em>입금자명 ${esc(g.pay_name)}</em>` : ""}${g.manual ? `<em>수기</em>` : ""}${g.gtype ? `<em class="gt ${GTC(g.gtype)}">${esc(g.gtype)}</em>` : ""}
           <span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${when(g.created_at, r.date)} 신청${g.paid_at ? `<b class="paid-at">${mdhm(g.paid_at)} 입금</b>` : ""}</span></span>
         <span class="act ed">
           ${g.status === "신청완료"
@@ -1543,11 +1566,12 @@ $("addManual").addEventListener("click", () => openManual());
 $("mSheet").addEventListener("click", e => { if (e.target.id === "mSheet" || e.target.id === "mClose") $("mSheet").classList.add("hidden"); });
 $("mSave").addEventListener("click", async () => {
   const body = { date: M.date, name: $("mName").value.trim(), age: $("mAge").value,
-                 gender: picked("mGender"), level: picked("mLevel"), fee: $("mFee").value.replace(/[^\d]/g, "") };
+                 gender: picked("mGender"), level: picked("mLevel"), gtype: picked("mGtype"), fee: $("mFee").value.replace(/[^\d]/g, "") };
   if (!body.name) return toast("이름을 입력해주세요");
   if (!body.age) return toast("나이대를 골라주세요");
   if (!body.gender) return toast("성별을 골라주세요");
   if (!body.level) return toast("급수를 골라주세요");
+  if (!body.gtype) return toast("게스트 유형을 골라주세요");
   if (body.fee === "") return toast("금액을 입력해주세요");
   $("mSave").disabled = true;
   try {
@@ -1952,7 +1976,7 @@ const DP = { page: 1, date: "" };    // date 비어 있으면 서버가 오늘�
 let DEPS = {};
 // 입금 한 줄의 처리 상태 표시 (목록·검색 공통)
 function depTag(x){
-  return x.guest_id ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")} ${x.linked ? "매칭확인" : x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
+  return x.guest_id ? `<span class="tag-ok">${esc(x.guest_name || "삭제된 신청")}${x.guest_gtype ? ` · ${esc(x.guest_gtype)}` : ""} ${x.linked ? "매칭확인" : x.guest_manual ? "명단 추가됨" : "자동확인"}</span>`
     : x.fee_note ? `<span class="tag-ok">회비 · ${esc(x.fee_note)}</span>`
     : x.amount >= DP.clubFee ? `<span class="tag-fee">미정 · 눌러서 회비 처리</span>`
     : `<span class="tag-add">+ 눌러서 명단 추가</span>`;
@@ -1981,7 +2005,7 @@ function renderLink(){
     const st = g.linked ? ["st-l", "다른 입금과 연결됨"] : g.status === "신청완료" ? ["st-p", "입금완료"] : ["st-w", "입금대기"];
     return `<button type="button" class="cand${LS.pick === g.id ? " on" : ""}${g.linked ? " done-g" : ""}" data-lg="${g.id}"${g.linked ? " disabled" : ""}>
       <span class="ck" aria-hidden="true"></span>
-      <span class="cn"><b>${esc(g.name)}${hit(g) ? ' <i class="role">이름 일치</i>' : ""}</b><span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${won(g.fee)}</span></span>
+      <span class="cn"><b>${esc(g.name)}${hit(g) ? ' <i class="role">이름 일치</i>' : ""}${g.gtype ? `<em class="gt ${GTC(g.gtype)}">${esc(g.gtype)}</em>` : ""}</b><span>${esc(g.age)} · ${esc(g.gender)} · ${esc(g.level)}${g.level === "초심" ? "" : "급"} · ${won(g.fee)}</span></span>
       <span class="how ${st[0]}">${st[1]}</span></button>`;
   }).join("") : `<p class="sheet-sub" style="margin:20px 2px">이 날 게스트 명단이 없어요. 날짜를 바꿔보세요</p>`;
   const g = LS.guests.find(x => x.id === LS.pick);
@@ -2215,9 +2239,14 @@ async function openPeople(key){
     const q = new URLSearchParams({ kind: ST.kind, mode: ST.mode, key: key || "", month: ST.month, year: ST.year });
     const r = await api("/api/admin/stats/people?" + q);
     $("psSub").textContent += ` · ${r.people.length}명${ST.kind === "club" && r.units !== r.people.length ? ` (${r.units}명분)` : ""} · ${won(r.total)}`;
+    if (ST.kind !== "club") {   // 게스트 유형별 인원 (유형 없는 예전 신청은 '미입력')
+      const by = {}; r.people.forEach(x => { const k = x.tag || "미입력"; by[k] = (by[k] || 0) + 1; });
+      const parts = [...GT_LIST, "미입력"].filter(k => by[k]).map(k => `${k} ${by[k]}`);
+      if (parts.length) $("psSub").textContent += ` · ${parts.join(" · ")}`;
+    }
     $("psList").innerHTML = r.people.length ? r.people.map((p, i) => `<li class="item">
         <span class="ava">${i + 1}</span>
-        <span class="who"><b>${esc(p.name)}</b>${p.tag ? `<i class="role">${esc(p.tag)}</i>` : ""}<span>${esc(p.detail)}</span></span>
+        <span class="who"><b>${esc(p.name)}</b>${p.tag ? (GT_LIST.includes(p.tag) ? `<em class="gt ${GTC(p.tag)}">${esc(p.tag)}</em>` : `<i class="role">${esc(p.tag)}</i>`) : ""}<span>${esc(p.detail)}</span></span>
         <span class="amt num">${won(p.amount)}</span></li>`).join("")
       : `<li class="empty"><div><b>이름이 없어요</b></div></li>`;
   } catch (e) { adminFail(e); }
